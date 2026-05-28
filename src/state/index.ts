@@ -8,6 +8,7 @@ export {
   readConfig,
   writeConfig,
   ensureArceusDir,
+  ensureArceusGitignore,
 } from "./config.js";
 export type { ArceusProjectConfig, TaskSourceEntry } from "./config.js";
 
@@ -26,10 +27,14 @@ export {
   getChange,
   listChanges,
   updateChangeStatus,
+  recordVerification,
   archiveChange,
   deleteChange,
   readChangeFile,
   writeChangeFile,
+  getAuditDir,
+  getAuditLatestPath,
+  getForceOverridesLogPath,
 } from "./changes.js";
 export type {
   Change,
@@ -38,4 +43,6 @@ export type {
   ChangeSummary,
   CreateChangeOptions,
   ListChangesOptions,
+  UpdateChangeStatusOptions,
+  RecordVerificationInput,
 } from "./changes.js";

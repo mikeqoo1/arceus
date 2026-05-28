@@ -28,5 +28,13 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Arceus runtime state (per-project, not committed)
-.arceus/
+# Arceus state — selectively committed.
+# Design artifacts under .arceus/changes/ and .arceus/config.json are
+# git-trackable so teams can review AI plans via PR. Runtime state
+# (notepad, session logs, preflight markers) is filtered out by the
+# nested .arceus/.gitignore that `arceus init` writes per project.
+.arceus/*
+!.arceus/.gitkeep
+!.arceus/.gitignore
+!.arceus/changes/
+!.arceus/config.json

@@ -1,0 +1,12 @@
+{
+  "id": "2026-05-28-integrate-check-spec-as-completion-gate",
+  "title": "Integrate check-spec as completion gate",
+  "status": "completed",
+  "createdAt": "2026-05-28T06:52:13.777Z",
+  "updatedAt": "2026-05-28T08:38:27.361Z",
+  "verdict": "REQUEST_CHANGES",
+  "verifiedSha": "47b94d9998e896aa58758f17d77626d47f4090fa",
+  "verifiedAt": "2026-05-28T08:35:42.585Z",
+  "verifiedBase": "origin/main",
+  "verificationBinaryVersion": "check-spec v0.1.0-2-gbee34ec-dirty (commit bee34ec, built 2026-05-26T03:45:57Z)"
+}

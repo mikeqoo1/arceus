@@ -104,6 +104,24 @@ Typical flow:
 
 CLI commands: `arceus change new|list|show|status|archive`
 
+#### 哪些 `.arceus/` 檔案 commit、哪些不 commit
+
+`.arceus/` 同時混了「團隊共享的設計產物」與「每位開發者的 runtime state」，兩層用 nested `.gitignore` 區分：
+
+**Commit 進 git**（PR review 對象）：
+- `.arceus/changes/` — 所有提案、規格、任務、決策
+- `.arceus/config.json` — 專案層級設定（taskSources、verification、preflight 等）
+- `.arceus/.gitkeep` — 骨架保留
+- `.arceus/.gitignore` — 這層 ignore 規則本身
+
+**不 commit**（per-developer runtime）：
+- `.arceus/notepad.md` — compaction-resistant 筆記
+- `.arceus/session-log/`、`.arceus/sessions/` — 對話 / 事件 log
+- `.arceus/.preflight`、`.arceus/.session/` — per-session marker
+- `.arceus/memory/` — 本機 memory 系統
+
+雙層 .gitignore 設計：repo root 用 `.arceus/*` + `!.arceus/changes/` 等 allowlist 控制；`.arceus/.gitignore`（由 `arceus init` 寫入）作為防呆，即便 root 配置壞掉也擋住 runtime state 外洩。
+
 ### Agents (subagent delegation)
 
 Agents are defined as markdown files in `agents/`. Used via Claude Code's Task/Agent system with `subagent_type="arceus:<name>"`.
@@ -113,4 +131,22 @@ Agents are defined as markdown files in `agents/`. Used via Claude Code's Task/A
 
 ### Evidence-Driven Verification
 
-All code changes must pass: typecheck → lint → test → build before completion.
+All code changes must pass two layers of verification before a change can be marked `completed`:
+
+**Layer 1 — Self-verification** (always required):
+`typecheck → lint → test → build` — proves the code compiles and behaves as the implementer tested.
+
+**Layer 2 — Independent audit** (configurable via `checkSpec.*` in `.arceus/config.json`):
+`arceus change verify <id>` calls the external [check-spec](https://github.com/mikeqoo1/check-spec) Go binary as a **third-party judge**. It reads `proposal.md` / `spec.md` / `tasks.md` + the git diff and returns a structured `APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION` verdict, persisted to `meta.json` and tied to the HEAD SHA at audit time.
+
+Three gate modes (controlled by `checkSpec` config):
+
+| `enabled` | `requireApprove` | Behavior |
+|---|---|---|
+| `false` | (any) | Gate fully bypassed; `arceus change verify` still runs but does not write `meta.json` |
+| `true` | `false` (**default**) | **Advisory**: verdict recorded; missing/non-APPROVE prints a warning but does not block `change status completed` |
+| `true` | `true` | **Strict**: completion requires `verdict === "APPROVE"` AND `verifiedSha === git rev-parse HEAD`. `--force` bypasses with an audit-log entry |
+
+**Audit size heuristic**: if the report exceeds 7000 characters, the CLI warns "change may be too large" — treat as a signal to split via `arceus change new`, not a blocker.
+
+**Report storage**: `.arceus/changes/<id>/audit/<ISO timestamp>.md` accumulates history; `audit/latest.md` always points at the most recent run. The `audit/` folder is git-tracked (PR reviewers see the verdict alongside the diff).

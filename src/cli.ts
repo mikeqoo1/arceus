@@ -1,19 +1,39 @@
 import { Command } from "commander";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   writeConfig,
+  readConfig,
   ensureArceusDir,
+  ensureArceusGitignore,
   createChange,
   listChanges,
   getChange,
   archiveChange,
   updateChangeStatus,
+  recordVerification,
   readChangeFile,
   ensureChangesDir,
+  getAuditDir,
+  getAuditLatestPath,
 } from "./state/index.js";
-import type { ChangeStatus } from "./state/index.js";
+import type { Change, ChangeStatus } from "./state/index.js";
+import {
+  runCheckSpec,
+  findBinary,
+  isReportOversize,
+  AUDIT_SIZE_WARNING_THRESHOLD,
+  OVERSIZE_WARNING_MESSAGE,
+} from "./integrations/check-spec.js";
+import { spawnSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,13 +72,20 @@ program
   .action(() => {
     const arceusDir = resolveArceusDir();
 
-    if (existsSync(arceusDir)) {
-      console.log(".arceus/ already exists. Skipping initialization.");
+    const alreadyInitialized = existsSync(arceusDir);
+
+    if (alreadyInitialized) {
+      // Idempotent upgrade: write the nested .gitignore if missing, but
+      // don't overwrite existing config or other state.
+      ensureArceusGitignore(arceusDir);
+      console.log(".arceus/ already exists. Ensured nested .gitignore is present.");
+      printCheckSpecTip();
       return;
     }
 
     ensureArceusDir(arceusDir);
     ensureChangesDir(arceusDir);
+    ensureArceusGitignore(arceusDir);
     writeConfig(arceusDir, {
       verification: {
         typecheck: "npm run typecheck",
@@ -71,7 +98,23 @@ program
 
     console.log("Initialized .arceus/ directory with default config.");
     console.log("Edit .arceus/config.json to configure task sources and model preferences.");
+    printCheckSpecTip();
   });
+
+function printCheckSpecTip(): void {
+  const resolved = findBinary("check-spec");
+  console.log("");
+  if (resolved) {
+    console.log(`✓ check-spec detected at ${resolved}`);
+    console.log("  Run independent spec/code audits: arceus change verify <id>");
+  } else {
+    console.log("Tip: Arceus integrates with check-spec for independent spec/code audits.");
+    console.log("  Install:   go install github.com/mikeqoo1/check-spec/cmd/check-spec@latest");
+    console.log("             # or grab a binary from https://github.com/mikeqoo1/check-spec/releases");
+    console.log("  Run:       arceus change verify <id>");
+    console.log("  Strict gate (opt-in): set checkSpec.requireApprove=true in .arceus/config.json");
+  }
+}
 
 program
   .command("status")
@@ -168,6 +211,20 @@ change
     }
     console.log(`# ${c.id} — ${c.title}  [${c.status}]`);
     console.log(`# ${c.dir}`);
+    if (c.verdict) {
+      console.log("");
+      console.log("Audit:");
+      console.log(`  Verdict:   ${c.verdict}`);
+      console.log(`  At:        ${c.verifiedAt ?? "?"}`);
+      console.log(`  Base:      ${c.verifiedBase ?? "?"}`);
+      console.log(`  Head SHA:  ${c.verifiedSha ?? "?"}`);
+      if (c.verificationModel) console.log(`  Model:     ${c.verificationModel}`);
+      if (c.verificationBinaryVersion) console.log(`  check-spec: ${c.verificationBinaryVersion}`);
+      const latestReport = getAuditLatestPath(arceusDir, c.id, c.status === "archived");
+      if (existsSync(latestReport)) {
+        console.log(`  Report:    ${latestReport}`);
+      }
+    }
     console.log("");
     console.log(readChangeFile(c, file));
   });
@@ -175,16 +232,203 @@ change
 change
   .command("status <id> <status>")
   .description("Update change status (draft|active|completed|archived)")
-  .action((id: string, status: string) => {
+  .option("--force", "Strict mode only: bypass the check-spec completion gate (logged to audit/force-overrides.log)")
+  .option("--reason <text>", "Free-text reason recorded with --force entries")
+  .action((id: string, status: string, opts: { force?: boolean; reason?: string }) => {
     const arceusDir = requireArceus();
     const allowed: ChangeStatus[] = ["draft", "active", "completed", "archived"];
     if (!allowed.includes(status as ChangeStatus)) {
       console.error(`Invalid status. Expected one of: ${allowed.join(", ")}`);
       process.exit(1);
     }
-    const updated = updateChangeStatus(arceusDir, id, status as ChangeStatus);
-    console.log(`${updated.id} → ${updated.status}`);
+    try {
+      const updated = updateChangeStatus(arceusDir, id, status as ChangeStatus, {
+        ...(opts.force ? { force: true } : {}),
+        ...(opts.reason ? { forceReason: opts.reason } : {}),
+      });
+      console.log(`${updated.id} → ${updated.status}`);
+    } catch (err) {
+      process.stderr.write(`[arceus] ${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(1);
+    }
   });
+
+change
+  .command("verify <id>")
+  .description("Run check-spec against a change and record the verdict in meta.json")
+  .option("--base <ref>", "Base git ref to diff against", "origin/main")
+  .option("--head <ref>", "Head git ref", "HEAD")
+  .option("--format <fmt>", "Report format saved to audit/ (markdown|json)", "markdown")
+  .option("--model <id>", "LLM model id forwarded to check-spec")
+  .option("--no-save", "Skip writing the report and meta.json (dry-run)")
+  .action((id: string, opts: {
+    base: string;
+    head: string;
+    format: string;
+    model?: string;
+    save: boolean;  // commander inverts --no-save → save: false
+  }) => {
+    const arceusDir = requireArceus();
+    const change = getChange(arceusDir, id);
+    if (!change) {
+      console.error(`Change not found: ${id}`);
+      process.exit(1);
+    }
+
+    if (opts.format !== "markdown" && opts.format !== "json") {
+      console.error(`Invalid --format: ${opts.format}. Expected markdown|json.`);
+      process.exit(1);
+    }
+
+    const config = readConfig(arceusDir);
+    const checkSpec = config.checkSpec ?? {};
+    const enabled = checkSpec.enabled !== false;
+    const binary = checkSpec.binary ?? "check-spec";
+
+    const result = runCheckSpec(arceusDir, id, {
+      base: opts.base,
+      head: opts.head,
+      format: opts.format,
+      binary,
+      ...(opts.model ? { model: opts.model } : {}),
+    });
+
+    // Surface errors actionably before touching meta.json.
+    if (result.errorKind) {
+      process.stderr.write(`[arceus] ${result.errorMessage ?? "check-spec failed"}\n`);
+      // Preserve any partial output for diagnostics if save is requested.
+      if (opts.save && result.report) {
+        persistReport(arceusDir, change, result, opts.format);
+      }
+      process.exit(2);
+    }
+
+    const tooLarge = isReportOversize(result.report);
+    if (tooLarge) {
+      process.stderr.write(`${OVERSIZE_WARNING_MESSAGE}\n`);
+    }
+
+    // Disabled mode: write the audit report (so users can still debug) but
+    // do NOT touch meta.json, per spec.md F4.
+    if (!enabled) {
+      if (opts.save) {
+        persistReport(arceusDir, change, result, opts.format, { warnIfOversize: tooLarge });
+      }
+      process.stderr.write(
+        "[arceus] checkSpec.enabled=false — report saved but verdict not recorded to meta.json.\n",
+      );
+      reportSummary(result, /* persisted= */ opts.save, /* metaWritten= */ false);
+      return;
+    }
+
+    if (!opts.save) {
+      // Dry-run: print but don't persist.
+      reportSummary(result, /* persisted= */ false, /* metaWritten= */ false);
+      return;
+    }
+
+    // Resolve current HEAD so meta.json's verifiedSha is authoritative. An
+    // empty or failing HEAD would silently store a corrupt SHA, so abort here
+    // and let the user re-run in a valid working tree.
+    const headResult = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" });
+    const headSha = headResult.status === 0 ? (headResult.stdout?.trim() ?? "") : "";
+    if (!headSha) {
+      process.stderr.write(
+        "[arceus] Unable to resolve HEAD via `git rev-parse HEAD` — verify must run inside a git repo with at least one commit so meta.json records an authoritative SHA.\n",
+      );
+      process.exit(2);
+    }
+
+    persistReport(arceusDir, change, result, opts.format, { warnIfOversize: tooLarge });
+
+    // verdict is non-null in success path — narrow for the type system.
+    if (result.verdict !== null) {
+      recordVerification(arceusDir, id, {
+        verdict: result.verdict,
+        verifiedSha: headSha,
+        verifiedBase: opts.base,
+        ...(opts.model ? { verificationModel: opts.model } : {}),
+        verificationBinaryVersion: result.binaryVersion,
+      });
+    }
+
+    reportSummary(result, /* persisted= */ true, /* metaWritten= */ result.verdict !== null);
+  });
+
+function persistReport(
+  arceusDir: string,
+  change: Change,
+  result: { report: string; format: "markdown" | "json"; verdict: string | null; binaryVersion: string },
+  requestedFormat: string,
+  options: { warnIfOversize?: boolean } = {},
+): { reportPath: string; latestPath: string } {
+  const archived = change.status === "archived";
+  const auditDir = getAuditDir(arceusDir, change.id, archived);
+  if (!existsSync(auditDir)) mkdirSync(auditDir, { recursive: true });
+
+  const ext = requestedFormat === "json" ? "json" : "md";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const reportPath = join(auditDir, `${stamp}.${ext}`);
+
+  const header = renderAuditHeader(result, {
+    oversize: options.warnIfOversize ?? false,
+    reportLength: result.report.length,
+  });
+  const body =
+    requestedFormat === "markdown"
+      ? `${header}\n${result.report}`
+      : result.report;
+
+  writeFileSync(reportPath, body, "utf-8");
+
+  // Maintain audit/latest.md as a copy of the latest markdown report. For
+  // json runs we still write latest.md by wrapping the JSON in a fence so a
+  // human reviewer always has one canonical entrypoint.
+  const latestPath = getAuditLatestPath(arceusDir, change.id, archived);
+  if (requestedFormat === "markdown") {
+    copyFileSync(reportPath, latestPath);
+  } else {
+    writeFileSync(
+      latestPath,
+      `${header}\n\`\`\`json\n${result.report}\n\`\`\`\n`,
+      "utf-8",
+    );
+  }
+
+  return { reportPath, latestPath };
+}
+
+function renderAuditHeader(
+  result: { verdict: string | null; binaryVersion: string },
+  options: { oversize: boolean; reportLength: number },
+): string {
+  const lines = [
+    "<!-- arceus check-spec audit -->",
+    `> **Verdict (recorded by arceus)**: ${result.verdict ?? "unparseable"}`,
+    `> **check-spec version**: ${result.binaryVersion}`,
+  ];
+  if (options.oversize) {
+    lines.push(`> [!WARNING]`);
+    lines.push(`> ${OVERSIZE_WARNING_MESSAGE}`);
+    lines.push(`> Threshold: ${AUDIT_SIZE_WARNING_THRESHOLD} chars; this report: ${options.reportLength} chars.`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function reportSummary(
+  result: { verdict: string | null; binaryVersion: string; format: "markdown" | "json"; report: string },
+  persisted: boolean,
+  metaWritten: boolean,
+): void {
+  console.log("");
+  console.log(`Verdict:   ${result.verdict ?? "unparseable"}`);
+  console.log(`check-spec: ${result.binaryVersion}`);
+  console.log(`Format:    ${result.format}`);
+  console.log(`Size:      ${result.report.length} chars`);
+  console.log(`Persisted: ${persisted ? "yes" : "no"}`);
+  console.log(`meta.json: ${metaWritten ? "verdict recorded" : "untouched"}`);
+}
 
 change
   .command("archive <id>")
