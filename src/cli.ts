@@ -361,7 +361,10 @@ function persistReport(
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const reportPath = join(auditDir, `${stamp}.${ext}`);
 
-  const header = renderAuditHeader(result, options.warnIfOversize ?? false);
+  const header = renderAuditHeader(result, {
+    oversize: options.warnIfOversize ?? false,
+    reportLength: result.report.length,
+  });
   const body =
     requestedFormat === "markdown"
       ? `${header}\n${result.report}`
@@ -388,13 +391,17 @@ function persistReport(
 
 function renderAuditHeader(
   result: { verdict: string | null; binaryVersion: string },
-  oversize: boolean,
+  options: { oversize: boolean; reportLength: number },
 ): string {
-  const lines = ["<!-- arceus check-spec audit -->", `> **Verdict (recorded by arceus)**: ${result.verdict ?? "unparseable"}`, `> **check-spec version**: ${result.binaryVersion}`];
-  if (oversize) {
+  const lines = [
+    "<!-- arceus check-spec audit -->",
+    `> **Verdict (recorded by arceus)**: ${result.verdict ?? "unparseable"}`,
+    `> **check-spec version**: ${result.binaryVersion}`,
+  ];
+  if (options.oversize) {
     lines.push(`> [!WARNING]`);
     lines.push(`> ${OVERSIZE_WARNING_MESSAGE}`);
-    lines.push(`> Threshold: ${AUDIT_SIZE_WARNING_THRESHOLD} chars; this report: ${"unknown"}.`);
+    lines.push(`> Threshold: ${AUDIT_SIZE_WARNING_THRESHOLD} chars; this report: ${options.reportLength} chars.`);
   }
   lines.push("");
   return lines.join("\n");

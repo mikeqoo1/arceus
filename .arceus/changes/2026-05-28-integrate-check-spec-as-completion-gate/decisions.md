@@ -149,3 +149,31 @@
   - 沒有 ID，check-spec 還是能跑（它本來就是吃自由格式的 markdown）——只是判決訊號比較糊
   - 先觀察 A 上線後判決品質是否真的成問題，再決定 B 值不值得
 - **Revisit if**: 上線後發現 check-spec 對逐項判決經常給不出有用結果
+
+## Decision 10: 承認本 change 自己的 dogfood 失敗（AC14），advisory 模式下 mark completed
+
+- **Context**: 跑 T-25 dogfood 後，check-spec 對本 change 給了 **REQUEST_CHANGES**（後續修 AC11 的 placeholder bug 後，verdict 仍可能是 REQUEST_CHANGES 或 APPROVE，但 audit 報告長度確定會超過 2000 字——16K 字第一次、修完後預期仍 >5K 字）。AC14 明確要求「APPROVE 且 < 2000 字」，因此 dogfood 在嚴格意義上**失敗**。
+
+- **Options considered**:
+  - (a) 拆分本 change：把實作切成 6-8 個小 change 重做，逐個過 audit
+  - (b) 提高 2000 閾值（例如改成 8000）讓本 change 通過
+  - (c) 在 advisory 模式下 mark completed，記錄 dogfood 失敗作為已知 limitation，**不**更改閾值
+  - (d) 切換到 strict 模式，用 `--force` 跳過，把繞過事件記進 force-overrides.log
+
+- **Chosen**: (c)
+
+- **Rationale**:
+  - (a) 拆分代表把 1600+ 行 diff、跨 8 個檔案的工作回頭拆 commit。價值低於成本：實作已經 review 過、tests 過、AC 16/18 PASS。拆分的好處是「下一次 dogfood 過」，但代價是大量 git 重寫
+  - (b) 改閾值等於「考試考不過就改通過分數」。這違反 Decision 6 訂的「閾值用 heuristic、靠數據迭代」原則——我們現在只有 1 個 data point，不足以調整
+  - (d) Force 是為**緊急情境**設的逃生口，不是「我寫的 change 太大」的常規回應。濫用 `--force` 會稀釋它的訊號價值
+  - (c) 最符合 advisory 模式的設計初衷：**verdict 記錄、警告印出、人類決定是否 ship**。我們作為人類已 review，決定接受
+  - audit 長度的根本原因有兩個：(i) check-spec 報告天生隨 task/AC 數量線性成長（每個 row 一行），本 change 25 tasks × 18 ACs 必然冗長；(ii) 本 change 在實作上確實偏大。前者是 check-spec 的特性，後者是真實訊號
+
+- **Learning**（要 propagate 到未來 changes）:
+  - **下次 propose 時把 task 數壓在 < 15**：超過代表 change 範圍過大，應在 propose 階段就拆分
+  - **AC 數量壓在 < 10**：類似道理
+  - **如果一個 change 必須包含基礎建設 + 多個 feature surface（像這次的整合）**，先用一個小 change 落地基礎建設、再用小 change 逐個加 feature。`integrate-check-spec` 應該被拆成: gate-types-only / cli-verify-command / advisory-strict-modes / docs-update / tests 五個
+
+- **Revisit if**:
+  - 後續 3 個 change 都過了 dogfood，本 change 就是「歷史學習」，不需要再動
+  - 若連續多個 change 都因報告長度 > 2000 而 fail dogfood（即便 change 範圍合理），證實 Decision 6 的閾值假設錯誤，**那時**才改閾值——並同步調整 check-spec 的報告 verbosity 期待
