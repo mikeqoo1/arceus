@@ -342,6 +342,36 @@ Verifier Agent 執行驗證指令
 3 輪都失敗？→ 報告給使用者 ⚠️
 ```
 
+### 9.1 外部稽核：check-spec 整合
+
+Self-verification 只能證明「code 編譯過、測試會過」，**證明不了**「code 有解決 spec 寫的問題」。後者需要獨立第三方判決。
+
+```
+Arceus apply 完成 self-verification
+  ↓
+arceus change verify <id>
+  ↓  spawnSync
+check-spec (Go binary, 獨立 repo) ─→ Anthropic API ─→ JSON verdict
+  ↓                                                       ↓
+audit/<ts>.md + audit/latest.md  ←──────────────  meta.json:
+                                                    verdict
+                                                    verifiedSha
+                                                    verifiedAt
+                                                    verificationBinaryVersion
+```
+
+**設計原則**：check-spec 不嵌入 Arceus，保持獨立的 repo / binary / review 視角；Arceus 只是「**呼叫它、尊重它的判決**」。
+
+**Gate 三態**（由 `.arceus/config.json` 的 `checkSpec` 區塊控制）：
+
+| `enabled` | `requireApprove` | 行為 |
+|---|---|---|
+| `false` | (任何) | 閘門完全旁路；verify 仍可手動跑、報告會寫，但 meta.json 不寫 verdict |
+| `true` | `false`（預設） | Advisory：verdict 寫進 meta.json；缺 / 非 APPROVE 印警告但不擋 `completed` |
+| `true` | `true` | Strict：必須 verdict === APPROVE 且 verifiedSha === HEAD；`--force` 帶 audit log entry 可繞過 |
+
+**Audit 大小訊號**：報告超過 2000 字時 stderr 印警告，提示 change 切太大、建議拆分。不擋流程。
+
 ---
 
 ## 10. 建議 Repo 結構（Plugin 版）

@@ -56,8 +56,47 @@ Review the implemented diff against `spec.md` acceptance criteria:
 
 Fix blocking issues, re-verify.
 
+### Step 5.5: Audit via check-spec (independent third-party judge)
+Run the independent spec/code audit:
+```bash
+npx arceus change verify <id>
+```
+
+This calls the `check-spec` binary (separate Go project — see
+https://github.com/mikeqoo1/check-spec) which acts as a third-party judge:
+it reads `proposal.md` / `spec.md` / `tasks.md` and the git diff, then
+returns a structured verdict — `APPROVE`, `REQUEST_CHANGES`, or
+`NEEDS_DISCUSSION`. The verdict, the HEAD SHA at audit time, and the
+binary version are written into `meta.json`. The full report is saved to
+`.arceus/changes/<id>/audit/<timestamp>.md` (and copied to `audit/latest.md`).
+
+The gate's behavior in Step 6 depends on `checkSpec` config:
+
+- **Strict mode** (`checkSpec.requireApprove=true`): completion is BLOCKED
+  unless verdict is `APPROVE` **and** `verifiedSha` matches the current
+  `HEAD` SHA. Use `--force` to bypass (logged to `audit/force-overrides.log`).
+- **Advisory mode** (default): completion proceeds with a warning if the
+  verdict is missing or non-APPROVE — the verdict is still recorded.
+
+Verdict handling:
+- `APPROVE`: proceed to Step 6.
+- `REQUEST_CHANGES`: read `.arceus/changes/<id>/audit/latest.md`, fix the
+  drift findings, commit, then re-run verify.
+- `NEEDS_DISCUSSION`: stop and surface the report to the user.
+- Maximum 3 re-verify rounds before stopping and asking the user.
+
+**Audit size signal**: if the report exceeds 2000 characters, `change verify`
+prints a warning that the change may be too large. Treat this as a hint to
+split into smaller changes via `arceus change new`, not as a blocker.
+
+**Missing binary / missing API key**: if `check-spec` is not installed or
+`ANTHROPIC_API_KEY` is not set, `change verify` exits 2 with actionable
+instructions. In strict mode this blocks Step 6; in advisory mode you can
+proceed (the gate will print a warning that no verdict is recorded).
+
 ### Step 6: Complete
-When all tasks are checked and verification passes:
+When all tasks are checked, verification passes, and check-spec verdict
+is recorded (or advisory mode lets the gate through):
 ```bash
 npx arceus change status <id> completed
 ```

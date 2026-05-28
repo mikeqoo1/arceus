@@ -19,6 +19,19 @@ export interface ArceusProjectConfig {
   };
   /** Max retry rounds for verification failures */
   maxRetries?: number;
+  /** check-spec independent audit integration (completion gate) */
+  checkSpec?: {
+    /** Master switch. When false the gate is fully bypassed. Defaults to true. */
+    enabled?: boolean;
+    /** Path or PATH-resolvable name of the check-spec binary. Defaults to "check-spec". */
+    binary?: string;
+    /**
+     * Strict mode: when true, marking a change `completed` requires an APPROVE
+     * verdict matching the current HEAD SHA. Defaults to false (advisory mode:
+     * verdict recorded but completion not blocked).
+     */
+    requireApprove?: boolean;
+  };
   /** Preflight check tuning (PreToolUse hook) */
   preflight?: {
     /** Disable the preflight gate entirely. */

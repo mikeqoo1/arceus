@@ -131,4 +131,22 @@ Agents are defined as markdown files in `agents/`. Used via Claude Code's Task/A
 
 ### Evidence-Driven Verification
 
-All code changes must pass: typecheck → lint → test → build before completion.
+All code changes must pass two layers of verification before a change can be marked `completed`:
+
+**Layer 1 — Self-verification** (always required):
+`typecheck → lint → test → build` — proves the code compiles and behaves as the implementer tested.
+
+**Layer 2 — Independent audit** (configurable via `checkSpec.*` in `.arceus/config.json`):
+`arceus change verify <id>` calls the external [check-spec](https://github.com/mikeqoo1/check-spec) Go binary as a **third-party judge**. It reads `proposal.md` / `spec.md` / `tasks.md` + the git diff and returns a structured `APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION` verdict, persisted to `meta.json` and tied to the HEAD SHA at audit time.
+
+Three gate modes (controlled by `checkSpec` config):
+
+| `enabled` | `requireApprove` | Behavior |
+|---|---|---|
+| `false` | (any) | Gate fully bypassed; `arceus change verify` still runs but does not write `meta.json` |
+| `true` | `false` (**default**) | **Advisory**: verdict recorded; missing/non-APPROVE prints a warning but does not block `change status completed` |
+| `true` | `true` | **Strict**: completion requires `verdict === "APPROVE"` AND `verifiedSha === git rev-parse HEAD`. `--force` bypasses with an audit-log entry |
+
+**Audit size heuristic**: if the report exceeds 2000 characters, the CLI warns "change may be too large" — treat as a signal to split via `arceus change new`, not a blocker.
+
+**Report storage**: `.arceus/changes/<id>/audit/<ISO timestamp>.md` accumulates history; `audit/latest.md` always points at the most recent run. The `audit/` folder is git-tracked (PR reviewers see the verdict alongside the diff).

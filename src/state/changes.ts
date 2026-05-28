@@ -9,6 +9,7 @@
 import {
   readFileSync,
   writeFileSync,
+  appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -17,6 +18,8 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { readConfig } from "./config.js";
 
 export type ChangeStatus = "draft" | "active" | "completed" | "archived";
 
@@ -29,6 +32,18 @@ export interface ChangeMeta {
   author?: string;
   linkedPr?: string;
   linkedBranch?: string;
+  /** Latest check-spec verdict, if any. */
+  verdict?: "APPROVE" | "REQUEST_CHANGES" | "NEEDS_DISCUSSION";
+  /** HEAD SHA at the time the verdict was recorded — used by strict gate for freshness. */
+  verifiedSha?: string;
+  /** ISO timestamp when the verdict was recorded. */
+  verifiedAt?: string;
+  /** Base ref used in the verification (e.g. "origin/main"). */
+  verifiedBase?: string;
+  /** LLM model id used by check-spec (e.g. "claude-opus-4-7"). */
+  verificationModel?: string;
+  /** check-spec binary version recorded for diagnostic traceability. */
+  verificationBinaryVersion?: string;
 }
 
 export interface Change extends ChangeMeta {
@@ -74,6 +89,22 @@ function getChangeDir(arceusDir: string, id: string, archived = false): string {
   return archived
     ? join(getArchiveRoot(arceusDir), id)
     : join(getChangesRoot(arceusDir), id);
+}
+
+const AUDIT_DIR = "audit";
+const AUDIT_LATEST = "latest.md";
+const FORCE_OVERRIDES_LOG = "force-overrides.log";
+
+export function getAuditDir(arceusDir: string, id: string, archived = false): string {
+  return join(getChangeDir(arceusDir, id, archived), AUDIT_DIR);
+}
+
+export function getAuditLatestPath(arceusDir: string, id: string, archived = false): string {
+  return join(getAuditDir(arceusDir, id, archived), AUDIT_LATEST);
+}
+
+export function getForceOverridesLogPath(arceusDir: string, id: string, archived = false): string {
+  return join(getAuditDir(arceusDir, id, archived), FORCE_OVERRIDES_LOG);
 }
 
 // --- Slug / id generation ---
@@ -317,13 +348,152 @@ export function listChanges(
   return results;
 }
 
+export interface UpdateChangeStatusOptions {
+  /** Override repo root for git rev-parse HEAD (testing). Defaults to process.cwd(). */
+  gitCwd?: string;
+  /** Strict mode escape hatch: bypass the APPROVE/SHA gate (writes a force-overrides.log entry). */
+  force?: boolean;
+  /** Free-text reason recorded with --force entries (e.g. "deadline"). */
+  forceReason?: string;
+  /** Identity recorded with --force entries. Defaults to git config user.name or $USER. */
+  forceActor?: string;
+  /** Skip the gate entirely (intended for tests that don't exercise gate logic). */
+  skipGate?: boolean;
+  /** Logger for warnings. Defaults to writing to stderr. */
+  warn?: (msg: string) => void;
+}
+
+function defaultWarn(msg: string): void {
+  process.stderr.write(msg.endsWith("\n") ? msg : `${msg}\n`);
+}
+
+function resolveHeadSha(cwd: string): { sha: string | null; reason: string | null } {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8" });
+  if (result.status === 0 && result.stdout) {
+    return { sha: result.stdout.trim(), reason: null };
+  }
+  const stderr = (result.stderr ?? "").toString();
+  // Distinguish "no commits yet" from "not a git repo" for clearer messages.
+  if (/ambiguous argument 'HEAD'|unknown revision/i.test(stderr) || /Needed a single revision/i.test(stderr)) {
+    return { sha: null, reason: "zero-commit repo (HEAD is unborn)" };
+  }
+  if (/not a git repository/i.test(stderr)) {
+    return { sha: null, reason: "not a git repository" };
+  }
+  return { sha: null, reason: stderr.trim() || `git rev-parse HEAD exited ${result.status}` };
+}
+
+function resolveForceActor(explicit: string | undefined, cwd: string): string {
+  if (explicit) return explicit;
+  const fromGit = spawnSync("git", ["config", "user.name"], { cwd, encoding: "utf-8" });
+  if (fromGit.status === 0 && fromGit.stdout?.trim()) {
+    return fromGit.stdout.trim();
+  }
+  return process.env["USER"] ?? process.env["USERNAME"] ?? "unknown";
+}
+
+function writeForceOverride(
+  arceusDir: string,
+  changeDir: string,
+  id: string,
+  meta: ChangeMeta,
+  options: UpdateChangeStatusOptions,
+): void {
+  void arceusDir;
+  void id;
+  const auditDir = join(changeDir, AUDIT_DIR);
+  if (!existsSync(auditDir)) mkdirSync(auditDir, { recursive: true });
+  const actor = resolveForceActor(options.forceActor, options.gitCwd ?? process.cwd());
+  const reason = options.forceReason ?? "(no reason given)";
+  const line =
+    `${new Date().toISOString()} actor=${actor} reason="${reason.replace(/"/g, "'")}" ` +
+    `verdict=${meta.verdict ?? "none"} verifiedSha=${meta.verifiedSha ?? "none"}\n`;
+  appendFileSync(join(auditDir, FORCE_OVERRIDES_LOG), line, "utf-8");
+}
+
+/**
+ * Enforce the check-spec completion gate when transitioning to `completed`.
+ *
+ * Three modes — see CLAUDE.md and spec.md F3:
+ *   - disabled: bypass entirely.
+ *   - advisory (default when enabled): emit a warning if verdict is missing
+ *     or non-APPROVE, but allow the transition.
+ *   - strict (requireApprove=true): require APPROVE verdict + matching HEAD
+ *     SHA. `--force` bypasses with an audit log entry.
+ *
+ * Throws Error for blocking failures so the CLI can map to non-zero exit.
+ */
+function enforceCompletionGate(
+  arceusDir: string,
+  change: Change,
+  options: UpdateChangeStatusOptions,
+): void {
+  const config = readConfig(arceusDir);
+  const checkSpec = config.checkSpec ?? {};
+  const enabled = checkSpec.enabled !== false;       // default true
+  const requireApprove = checkSpec.requireApprove === true;  // default false
+  const warn = options.warn ?? defaultWarn;
+
+  if (!enabled) return;
+
+  if (!requireApprove) {
+    // Advisory mode.
+    if (options.force) {
+      warn("[arceus] --force has no effect in advisory mode; gate is already non-blocking.");
+    }
+    if (change.verdict !== "APPROVE") {
+      warn(
+        `[arceus] No APPROVE verdict for ${change.id} ` +
+        `(current: ${change.verdict ?? "none"}). Marking completed anyway — ` +
+        `run 'arceus change verify ${change.id}' for an independent audit, ` +
+        `or set checkSpec.requireApprove=true for hard gating.`,
+      );
+    }
+    return;
+  }
+
+  // Strict mode.
+  if (options.force) {
+    writeForceOverride(arceusDir, change.dir, change.id, change, options);
+    warn(`[arceus] Strict gate bypassed via --force for ${change.id}.`);
+    return;
+  }
+
+  if (change.verdict !== "APPROVE") {
+    throw new Error(
+      `No APPROVE verdict for ${change.id} (current: ${change.verdict ?? "none"}). ` +
+      `Run 'arceus change verify ${change.id}' first, or pass --force.`,
+    );
+  }
+
+  const { sha, reason } = resolveHeadSha(options.gitCwd ?? process.cwd());
+  if (!sha) {
+    throw new Error(
+      `Cannot resolve HEAD (${reason ?? "unknown"}). ` +
+      `Strict gate cannot verify SHA freshness — please commit at least once before marking completed.`,
+    );
+  }
+
+  if (change.verifiedSha !== sha) {
+    throw new Error(
+      `verifiedSha (${change.verifiedSha ?? "none"}) does not match current HEAD (${sha}). ` +
+      `Re-run 'arceus change verify ${change.id}' after the latest commit.`,
+    );
+  }
+}
+
 export function updateChangeStatus(
   arceusDir: string,
   id: string,
   status: ChangeStatus,
+  options: UpdateChangeStatusOptions = {},
 ): Change {
   const change = getChange(arceusDir, id);
   if (!change) throw new Error(`Change not found: ${id}`);
+
+  if (status === "completed" && !options.skipGate) {
+    enforceCompletionGate(arceusDir, change, options);
+  }
 
   const updated: ChangeMeta = {
     ...stripChangeFields(change),
@@ -337,6 +507,48 @@ export function updateChangeStatus(
     "utf-8",
   );
 
+  return toChange(change.dir, updated);
+}
+
+/**
+ * Persist the latest check-spec verdict to meta.json. Caller (cli.ts) is
+ * responsible for writing the report file itself; this only touches meta.
+ */
+export interface RecordVerificationInput {
+  verdict: "APPROVE" | "REQUEST_CHANGES" | "NEEDS_DISCUSSION";
+  verifiedSha: string;
+  verifiedBase: string;
+  verificationModel?: string;
+  verificationBinaryVersion?: string;
+}
+
+export function recordVerification(
+  arceusDir: string,
+  id: string,
+  input: RecordVerificationInput,
+  now: Date = new Date(),
+): Change {
+  const change = getChange(arceusDir, id);
+  if (!change) throw new Error(`Change not found: ${id}`);
+
+  const updated: ChangeMeta = {
+    ...stripChangeFields(change),
+    verdict: input.verdict,
+    verifiedSha: input.verifiedSha,
+    verifiedAt: now.toISOString(),
+    verifiedBase: input.verifiedBase,
+    ...(input.verificationModel ? { verificationModel: input.verificationModel } : {}),
+    ...(input.verificationBinaryVersion
+      ? { verificationBinaryVersion: input.verificationBinaryVersion }
+      : {}),
+    updatedAt: now.toISOString(),
+  };
+
+  writeFileSync(
+    join(change.dir, META_FILE),
+    JSON.stringify(updated, null, 2) + "\n",
+    "utf-8",
+  );
   return toChange(change.dir, updated);
 }
 

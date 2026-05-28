@@ -27,10 +27,14 @@ export {
   getChange,
   listChanges,
   updateChangeStatus,
+  recordVerification,
   archiveChange,
   deleteChange,
   readChangeFile,
   writeChangeFile,
+  getAuditDir,
+  getAuditLatestPath,
+  getForceOverridesLogPath,
 } from "./changes.js";
 export type {
   Change,
@@ -39,4 +43,6 @@ export type {
   ChangeSummary,
   CreateChangeOptions,
   ListChangesOptions,
+  UpdateChangeStatusOptions,
+  RecordVerificationInput,
 } from "./changes.js";
