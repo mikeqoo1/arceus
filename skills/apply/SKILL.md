@@ -85,7 +85,7 @@ Verdict handling:
 - `NEEDS_DISCUSSION`: stop and surface the report to the user.
 - Maximum 3 re-verify rounds before stopping and asking the user.
 
-**Audit size signal**: if the report exceeds 2000 characters, `change verify`
+**Audit size signal**: if the report exceeds 7000 characters, `change verify`
 prints a warning that the change may be too large. Treat this as a hint to
 split into smaller changes via `arceus change new`, not as a blocker.
 

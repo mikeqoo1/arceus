@@ -18,7 +18,7 @@
 - **不破壞 check-spec 的獨立性**：check-spec 保持是分離的 Go binary、分離的 repo、分離的 review 視角。Arceus 只是「**呼叫它、尊重它的判決**」，不嵌入它的邏輯。
 - **不重複 check-spec 已經做好的事**：Arceus 不會自己 reimplement spec/diff 比對；那是 check-spec 的核心價值。
 - **預設記錄但不擋**：verify 預設會跑、verdict 預設會寫進 `meta.json`，但**不**預設阻擋 `change status completed`——個人 prototype 場景下 hard block 太擾民。團隊要嚴格 gate 時把 `checkSpec.requireApprove` 設成 `true` 即可升級。
-- **用 audit 大小當 task 切分訊號**：單份 audit 報告超過 2000 字時印警告——通常意味著這個 change 一次塞太多東西，建議拆分。這是 advisory，不擋流程。
+- **用 audit 大小當 task 切分訊號**：單份 audit 報告超過 7000 字時印警告——通常意味著這個 change 一次塞太多東西，建議拆分。這是 advisory，不擋流程。
 
 ## 範圍 (Scope)
 
@@ -30,7 +30,7 @@
   - 新增 config schema `checkSpec.{enabled, binary, requireApprove}` 進 `.arceus/config.json`（預設 `enabled: true`、`requireApprove: false`）
   - 稽核報告持久化到 `.arceus/changes/<id>/audit/<timestamp>.md`，並維護 `audit/latest.md` 指向最新一份
   - 在 `arceus init` first-run 輸出中加入 check-spec 安裝指引（讓使用者第一天就知道有這層 audit）
-  - 單份 audit 報告超過 2000 字時印警告（「change 可能切太大，考慮拆分」）
+  - 單份 audit 報告超過 7000 字時印警告（「change 可能切太大，考慮拆分」）
   - `change show` 輸出顯示最近 verdict + 時間戳 + 對應的 commit SHA
   - 加 `--force` 旗標讓 emergency 情境可以跳過 gate（會印警告 + 寫進 audit log）
   - 對應 unit/integration tests

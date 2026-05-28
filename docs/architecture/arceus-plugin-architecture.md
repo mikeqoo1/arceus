@@ -370,7 +370,7 @@ audit/<ts>.md + audit/latest.md  ←──────────────  
 | `true` | `false`（預設） | Advisory：verdict 寫進 meta.json；缺 / 非 APPROVE 印警告但不擋 `completed` |
 | `true` | `true` | Strict：必須 verdict === APPROVE 且 verifiedSha === HEAD；`--force` 帶 audit log entry 可繞過 |
 
-**Audit 大小訊號**：報告超過 2000 字時 stderr 印警告，提示 change 切太大、建議拆分。不擋流程。
+**Audit 大小訊號**：報告超過 7000 字時 stderr 印警告，提示 change 切太大、建議拆分。不擋流程。
 
 ---
 

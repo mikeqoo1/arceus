@@ -248,8 +248,21 @@ export function runCheckSpec(
   };
 }
 
-/** Default size threshold (in characters) beyond which we warn about change size. */
-export const AUDIT_SIZE_WARNING_THRESHOLD = 2000;
+/**
+ * Default size threshold (in characters) beyond which we warn about change size.
+ *
+ * Calibration history:
+ *   - v1 (2000 chars): too aggressive — any change with >5 task/AC rows
+ *     blew through it because check-spec's per-item table dominates length.
+ *   - v2 (7000 chars): set after the integrate-check-spec dogfood produced
+ *     12k-16k char reports. 7000 ≈ 15 tasks × ~400 + 10 ACs × ~300 + buffer,
+ *     so it fires only when a change is genuinely sprawling (or has heavy
+ *     drift findings), not on every well-scoped change.
+ *
+ * See Decision 6 in the 2026-05-28-integrate-check-spec-as-completion-gate
+ * change for full rationale.
+ */
+export const AUDIT_SIZE_WARNING_THRESHOLD = 7000;
 
 /** Whether the report is "too large" — Heuristic that the change was sliced too coarsely. */
 export function isReportOversize(report: string): boolean {

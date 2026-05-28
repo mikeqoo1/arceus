@@ -147,6 +147,6 @@ Three gate modes (controlled by `checkSpec` config):
 | `true` | `false` (**default**) | **Advisory**: verdict recorded; missing/non-APPROVE prints a warning but does not block `change status completed` |
 | `true` | `true` | **Strict**: completion requires `verdict === "APPROVE"` AND `verifiedSha === git rev-parse HEAD`. `--force` bypasses with an audit-log entry |
 
-**Audit size heuristic**: if the report exceeds 2000 characters, the CLI warns "change may be too large" — treat as a signal to split via `arceus change new`, not a blocker.
+**Audit size heuristic**: if the report exceeds 7000 characters, the CLI warns "change may be too large" — treat as a signal to split via `arceus change new`, not a blocker.
 
 **Report storage**: `.arceus/changes/<id>/audit/<ISO timestamp>.md` accumulates history; `audit/latest.md` always points at the most recent run. The `audit/` folder is git-tracked (PR reviewers see the verdict alongside the diff).

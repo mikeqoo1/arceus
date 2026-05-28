@@ -14,13 +14,13 @@
 - 內部 shell-out 呼叫 `<config.checkSpec.binary> verify --change <id> --base <ref> --head <ref> --format json`
 - 解析 JSON 結果，更新 `meta.json` 的 `verdict` / `verifiedSha` / `verifiedAt`
 - 把報告（不論 markdown 或 json）寫到 `.arceus/changes/<id>/audit/<ISO timestamp>.<ext>`，並更新 `.arceus/changes/<id>/audit/latest.md` 為最新報告的副本
-- **大小檢測**：報告字數（以 markdown 純文字長度計）超過 2000 字時，印警告到 stderr：`[arceus] Audit report exceeds 2000 chars — this change may be too large; consider splitting via 'arceus change new'.`，並在 audit 檔案開頭插入同一行 `> [!WARNING]` 區塊
+- **大小檢測**：報告字數（以 markdown 純文字長度計）超過 7000 字時，印警告到 stderr：`[arceus] Audit report exceeds 7000 chars — this change may be too large; consider splitting via 'arceus change new'.`，並在 audit 檔案開頭插入同一行 `> [!WARNING]` 區塊
 - **退出碼分層**（必須區分兩個來源）：
   - check-spec binary 自己的退出碼是輸入：`0` = APPROVE、`1` = 非 APPROVE、`2` = 執行錯誤
   - Arceus CLI (`arceus change verify`) 的退出碼是輸出，由 Arceus 自己決定：
     - `0`：verify 流程完成、報告已寫入；若 binary 回 0 或 1 都算「流程成功」
     - `2`：Arceus 自己的執行錯誤（binary 不存在、缺 API key、git ref 解析失敗、JSON parse 失敗等）
-  - 2000 字警告**不**改變任一層的退出碼——它純粹是 advisory
+  - 7000 字警告**不**改變任一層的退出碼——它純粹是 advisory
 - **記錄 check-spec 版本**：在每次 spawn 前先跑 `<binary> version`（exit 0、輸出版本字串），把版本寫進 audit 報告的 metadata 表頭。若 version 子命令本身失敗，warning 而非 error，標記版本為 `unknown`
 
 #### F2. ChangeMeta 擴充
@@ -136,10 +136,10 @@ Tip: Arceus integrates with check-spec for independent spec/code audits.
 - [ ] **AC8 (show)**: `change show <id>` 在 verdict 存在時顯示 Audit 區塊
 - [ ] **AC9 (skill)**: `skills/apply/SKILL.md` 中存在 Step 5.5，且 Step 6 仍維持原 `change status completed` 呼叫
 - [ ] **AC10 (archive)**: 既有 `.arceus/changes/` 下尚未有 verdict 的 changes，能正常被 archive（archive 路徑不受閘門影響）
-- [ ] **AC11 (size warning)**: 給定 mock binary 回傳一份 >2000 字的 markdown 報告，verify 完成後 stderr 出現 F1 規定的「change may be too large」警告，且 audit 檔開頭有 `> [!WARNING]` 區塊；退出碼**不**因警告而改變
+- [ ] **AC11 (size warning)**: 給定 mock binary 回傳一份 >7000 字的 markdown 報告，verify 完成後 stderr 出現 F1 規定的「change may be too large」警告，且 audit 檔開頭有 `> [!WARNING]` 區塊；退出碼**不**因警告而改變
 - [ ] **AC12 (init tip)**: `arceus init` 印出 F7 規定的 check-spec 安裝指引；當 PATH 上已有 check-spec 時改顯示 `✓ check-spec detected at <path>`
 - [ ] **AC13 (verify)**: `npm run verify` (typecheck + lint + test + build) 全綠
-- [ ] **AC14 (dogfood)**: 本 change 自身在 apply 完成後，能跑過 `check-spec verify` 並取得 APPROVE（吃自己的狗食，且 audit 報告字數 < 2000 字——若超過，代表此 change 本身就違反自己訂的規矩，需要拆分）
+- [ ] **AC14 (dogfood)**: 本 change 自身在 apply 完成後，能跑過 `check-spec verify` 並取得 APPROVE（吃自己的狗食，且 audit 報告字數 < 7000 字——若超過，代表此 change 本身就違反自己訂的規矩，需要拆分）
 - [ ] **AC15 (zero-commit)**: 在 zero-commit repo（`git init` 但無任何 commit）跑 strict 模式的 `change status <id> completed`，必須印 F3 規定的「Cannot resolve HEAD」訊息、退出碼 2，**不**拋出原始 git stderr stack
 - [ ] **AC16 (force in advisory)**: advisory 模式下執行 `change status <id> completed --force` 必須印 F3 規定的「--force has no effect in advisory mode」訊息且**不**寫 force-overrides.log
 - [ ] **AC17 (disabled verify)**: `config.checkSpec.enabled = false` 下跑 `change verify <id>`，stderr 出現 F4 規定的「report saved but verdict not recorded」訊息，audit 檔有被建立，但 meta.json 的 verdict 欄位仍為 undefined

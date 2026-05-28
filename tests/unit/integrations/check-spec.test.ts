@@ -73,9 +73,10 @@ case "$1" in
         echo ""
         echo "- **Verdict**: REQUEST_CHANGES"
         echo ""
-        # Generate ~2500 chars of body.
+        # Generate ~12k chars of body — comfortably over the 7000 threshold
+        # so the size heuristic fires.
         i=0
-        while [ $i -lt 50 ]; do
+        while [ $i -lt 150 ]; do
           echo "Line $i: lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod"
           i=$((i+1))
         done
@@ -271,12 +272,12 @@ describe.skipIf(SKIP_ON_WIN)("runCheckSpec — oversize report", () => {
 
 describe("isReportOversize", () => {
   it("returns true above the threshold", () => {
-    const long = "a".repeat(2001);
+    const long = "a".repeat(7001);
     expect(isReportOversize(long)).toBe(true);
   });
 
   it("returns false at or below the threshold", () => {
-    const exact = "a".repeat(2000);
+    const exact = "a".repeat(7000);
     expect(isReportOversize(exact)).toBe(false);
     expect(isReportOversize("short")).toBe(false);
   });

@@ -3,10 +3,10 @@
   "title": "Integrate check-spec as completion gate",
   "status": "active",
   "createdAt": "2026-05-28T06:52:13.777Z",
-  "updatedAt": "2026-05-28T08:20:17.798Z",
+  "updatedAt": "2026-05-28T08:27:14.396Z",
   "verdict": "REQUEST_CHANGES",
-  "verifiedSha": "e479c7b7e3fccac44f827bf3eec02ca98c107a8b",
-  "verifiedAt": "2026-05-28T08:20:17.798Z",
+  "verifiedSha": "f1290f4e17656827ab66b61824ed2fb09a25c9c0",
+  "verifiedAt": "2026-05-28T08:27:14.396Z",
   "verifiedBase": "origin/main",
   "verificationBinaryVersion": "check-spec v0.1.0-2-gbee34ec-dirty (commit bee34ec, built 2026-05-26T03:45:57Z)"
 }
