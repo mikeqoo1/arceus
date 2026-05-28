@@ -8,6 +8,7 @@ export {
   readConfig,
   writeConfig,
   ensureArceusDir,
+  ensureArceusGitignore,
 } from "./config.js";
 export type { ArceusProjectConfig, TaskSourceEntry } from "./config.js";
 

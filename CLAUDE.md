@@ -104,6 +104,24 @@ Typical flow:
 
 CLI commands: `arceus change new|list|show|status|archive`
 
+#### 哪些 `.arceus/` 檔案 commit、哪些不 commit
+
+`.arceus/` 同時混了「團隊共享的設計產物」與「每位開發者的 runtime state」，兩層用 nested `.gitignore` 區分：
+
+**Commit 進 git**（PR review 對象）：
+- `.arceus/changes/` — 所有提案、規格、任務、決策
+- `.arceus/config.json` — 專案層級設定（taskSources、verification、preflight 等）
+- `.arceus/.gitkeep` — 骨架保留
+- `.arceus/.gitignore` — 這層 ignore 規則本身
+
+**不 commit**（per-developer runtime）：
+- `.arceus/notepad.md` — compaction-resistant 筆記
+- `.arceus/session-log/`、`.arceus/sessions/` — 對話 / 事件 log
+- `.arceus/.preflight`、`.arceus/.session/` — per-session marker
+- `.arceus/memory/` — 本機 memory 系統
+
+雙層 .gitignore 設計：repo root 用 `.arceus/*` + `!.arceus/changes/` 等 allowlist 控制；`.arceus/.gitignore`（由 `arceus init` 寫入）作為防呆，即便 root 配置壞掉也擋住 runtime state 外洩。
+
 ### Agents (subagent delegation)
 
 Agents are defined as markdown files in `agents/`. Used via Claude Code's Task/Agent system with `subagent_type="arceus:<name>"`.

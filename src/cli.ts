@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   writeConfig,
   ensureArceusDir,
+  ensureArceusGitignore,
   createChange,
   listChanges,
   getChange,
@@ -52,13 +53,19 @@ program
   .action(() => {
     const arceusDir = resolveArceusDir();
 
-    if (existsSync(arceusDir)) {
-      console.log(".arceus/ already exists. Skipping initialization.");
+    const alreadyInitialized = existsSync(arceusDir);
+
+    if (alreadyInitialized) {
+      // Idempotent upgrade: write the nested .gitignore if missing, but
+      // don't overwrite existing config or other state.
+      ensureArceusGitignore(arceusDir);
+      console.log(".arceus/ already exists. Ensured nested .gitignore is present.");
       return;
     }
 
     ensureArceusDir(arceusDir);
     ensureChangesDir(arceusDir);
+    ensureArceusGitignore(arceusDir);
     writeConfig(arceusDir, {
       verification: {
         typecheck: "npm run typecheck",

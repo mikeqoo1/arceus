@@ -82,3 +82,42 @@ export function ensureArceusDir(arceusDir: string): void {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 }
+
+const GITIGNORE_FILE = ".gitignore";
+
+const DEFAULT_ARCEUS_GITIGNORE = `# Runtime state — never committed.
+notepad.md
+session-log/
+sessions/
+.preflight
+.session/
+memory/
+
+# Logs / temp
+*.log
+*.tmp
+
+# Spec-driven artifacts — explicitly allowed (defense in depth even
+# if the repo root .gitignore is misconfigured).
+!changes/
+!config.json
+!.gitkeep
+!.gitignore
+`;
+
+/**
+ * Write a nested .gitignore inside .arceus/ that protects runtime state
+ * (notepad, session logs, preflight markers) from being committed, while
+ * explicitly allowing the spec-driven artifacts (changes/, config.json).
+ *
+ * Idempotent: a no-op when the file already exists, so user customizations
+ * are preserved across `arceus init` upgrades.
+ */
+export function ensureArceusGitignore(arceusDir: string): void {
+  const path = join(arceusDir, GITIGNORE_FILE);
+  if (existsSync(path)) return;
+  if (!existsSync(arceusDir)) {
+    mkdirSync(arceusDir, { recursive: true });
+  }
+  writeFileSync(path, DEFAULT_ARCEUS_GITIGNORE, "utf-8");
+}
