@@ -208,6 +208,22 @@ describe("updateChangeStatus — strict gate", () => {
     expect(content).toMatch(/actor=tester/);
     expect(content).toMatch(/reason="deadline"/);
   });
+
+  it("collapses newlines in --force reason so each entry stays one line", () => {
+    const updated = updateChangeStatus(s.arceusDir, s.changeId, "completed", {
+      gitCwd: s.root,
+      warn: vi.fn(),
+      force: true,
+      forceReason: "line one\nline two\rline three",
+      forceActor: "tester",
+    });
+    expect(updated.status).toBe("completed");
+    const log = getForceOverridesLogPath(s.arceusDir, s.changeId);
+    const content = readFileSync(log, "utf-8");
+    // Exactly one trailing newline → exactly one entry.
+    expect(content.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+    expect(content).toMatch(/reason="line one line two line three"/);
+  });
 });
 
 describe("updateChangeStatus — strict gate on zero-commit repo", () => {

@@ -16,3 +16,10 @@ memory/
 !config.json
 !.gitkeep
 !.gitignore
+
+# Re-include audit artifacts. force-overrides.log would otherwise be
+# matched by the *.log rule above; git does not re-include files via
+# a directory-only `!changes/` negation.
+!changes/**/audit/
+!changes/**/audit/**
+!changes/**/audit/force-overrides.log

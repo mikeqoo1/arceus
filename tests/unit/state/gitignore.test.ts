@@ -33,6 +33,9 @@ describe("ensureArceusGitignore", () => {
     expect(content).toContain(".preflight");
     expect(content).toContain("!changes/");
     expect(content).toContain("!config.json");
+    // force-overrides.log must be explicitly re-included because *.log
+    // would otherwise hide it from git status even inside changes/.
+    expect(content).toContain("!changes/**/audit/force-overrides.log");
   });
 
   it("creates the arceus dir if it does not exist", () => {

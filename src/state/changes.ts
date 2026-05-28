@@ -404,9 +404,13 @@ function writeForceOverride(
   const auditDir = join(changeDir, AUDIT_DIR);
   if (!existsSync(auditDir)) mkdirSync(auditDir, { recursive: true });
   const actor = resolveForceActor(options.forceActor, options.gitCwd ?? process.cwd());
-  const reason = options.forceReason ?? "(no reason given)";
+  const rawReason = options.forceReason ?? "(no reason given)";
+  // Collapse newlines and quotes so each override is exactly one line — the
+  // file is read line-by-line by humans and tooling, and a multi-line reason
+  // would break that invariant.
+  const reason = rawReason.replace(/[\r\n]+/g, " ").replace(/"/g, "'");
   const line =
-    `${new Date().toISOString()} actor=${actor} reason="${reason.replace(/"/g, "'")}" ` +
+    `${new Date().toISOString()} actor=${actor} reason="${reason}" ` +
     `verdict=${meta.verdict ?? "none"} verifiedSha=${meta.verifiedSha ?? "none"}\n`;
   appendFileSync(join(auditDir, FORCE_OVERRIDES_LOG), line, "utf-8");
 }

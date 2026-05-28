@@ -25,7 +25,7 @@ import {
   getAuditDir,
   getAuditLatestPath,
 } from "./state/index.js";
-import type { ChangeStatus } from "./state/index.js";
+import type { Change, ChangeStatus } from "./state/index.js";
 import {
   runCheckSpec,
   findBinary,
@@ -220,7 +220,7 @@ change
       console.log(`  Head SHA:  ${c.verifiedSha ?? "?"}`);
       if (c.verificationModel) console.log(`  Model:     ${c.verificationModel}`);
       if (c.verificationBinaryVersion) console.log(`  check-spec: ${c.verificationBinaryVersion}`);
-      const latestReport = getAuditLatestPath(arceusDir, c.id);
+      const latestReport = getAuditLatestPath(arceusDir, c.id, c.status === "archived");
       if (existsSync(latestReport)) {
         console.log(`  Report:    ${latestReport}`);
       }
@@ -298,7 +298,7 @@ change
       process.stderr.write(`[arceus] ${result.errorMessage ?? "check-spec failed"}\n`);
       // Preserve any partial output for diagnostics if save is requested.
       if (opts.save && result.report) {
-        persistReport(arceusDir, id, result, opts.format);
+        persistReport(arceusDir, change, result, opts.format);
       }
       process.exit(2);
     }
@@ -312,7 +312,7 @@ change
     // do NOT touch meta.json, per spec.md F4.
     if (!enabled) {
       if (opts.save) {
-        persistReport(arceusDir, id, result, opts.format, { warnIfOversize: tooLarge });
+        persistReport(arceusDir, change, result, opts.format, { warnIfOversize: tooLarge });
       }
       process.stderr.write(
         "[arceus] checkSpec.enabled=false — report saved but verdict not recorded to meta.json.\n",
@@ -327,11 +327,19 @@ change
       return;
     }
 
-    // Resolve current HEAD so meta.json's verifiedSha is authoritative.
+    // Resolve current HEAD so meta.json's verifiedSha is authoritative. An
+    // empty or failing HEAD would silently store a corrupt SHA, so abort here
+    // and let the user re-run in a valid working tree.
     const headResult = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" });
     const headSha = headResult.status === 0 ? (headResult.stdout?.trim() ?? "") : "";
+    if (!headSha) {
+      process.stderr.write(
+        "[arceus] Unable to resolve HEAD via `git rev-parse HEAD` — verify must run inside a git repo with at least one commit so meta.json records an authoritative SHA.\n",
+      );
+      process.exit(2);
+    }
 
-    persistReport(arceusDir, id, result, opts.format, { warnIfOversize: tooLarge });
+    persistReport(arceusDir, change, result, opts.format, { warnIfOversize: tooLarge });
 
     // verdict is non-null in success path — narrow for the type system.
     if (result.verdict !== null) {
@@ -349,12 +357,13 @@ change
 
 function persistReport(
   arceusDir: string,
-  id: string,
+  change: Change,
   result: { report: string; format: "markdown" | "json"; verdict: string | null; binaryVersion: string },
   requestedFormat: string,
   options: { warnIfOversize?: boolean } = {},
 ): { reportPath: string; latestPath: string } {
-  const auditDir = getAuditDir(arceusDir, id);
+  const archived = change.status === "archived";
+  const auditDir = getAuditDir(arceusDir, change.id, archived);
   if (!existsSync(auditDir)) mkdirSync(auditDir, { recursive: true });
 
   const ext = requestedFormat === "json" ? "json" : "md";
@@ -375,7 +384,7 @@ function persistReport(
   // Maintain audit/latest.md as a copy of the latest markdown report. For
   // json runs we still write latest.md by wrapping the JSON in a fence so a
   // human reviewer always has one canonical entrypoint.
-  const latestPath = getAuditLatestPath(arceusDir, id);
+  const latestPath = getAuditLatestPath(arceusDir, change.id, archived);
   if (requestedFormat === "markdown") {
     copyFileSync(reportPath, latestPath);
   } else {
