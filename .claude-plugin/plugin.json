@@ -1,6 +1,6 @@
 {
   "name": "arceus",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Multi-agent orchestration plugin for Claude Code — magic keywords, skills, subagent delegation, evidence-driven verification",
   "author": {
     "name": "seaflower"
