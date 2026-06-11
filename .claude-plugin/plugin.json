@@ -5,6 +5,5 @@
   "author": {
     "name": "seaflower"
   },
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "skills": "./skills/"
 }

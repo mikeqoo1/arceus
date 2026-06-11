@@ -37,8 +37,10 @@ CLI: `node dist/cli.js --version`
 hooks/hooks.json              # Hook registrations (lifecycle events)
 agents/*.md                   # Agent definitions (markdown + YAML frontmatter)
 skills/*/SKILL.md             # Skill workflow definitions
-.mcp.json                     # MCP server for state tools
+workflows/*.js                # Workflow script assets (adversarial-review, judge-panel)
 ```
+
+MCP server：尚未實作。未來實作 arceus-state 時以 `plugin.json` 的 `mcpServers` 欄位**內聯**註冊（勿復活根目錄 `.mcp.json`——symlink 安裝下該檔名有 plugin/專案雙重身分問題，見 2026-06-11-remove-vestigial-mcp-server-registration 的 Decision 2）。
 
 ### Source Structure
 

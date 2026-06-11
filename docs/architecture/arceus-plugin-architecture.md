@@ -655,7 +655,7 @@ arceus/
 - [x] 確認 plugin manifest 格式（`.claude-plugin/plugin.json`）
 - [x] 確認 hooks 的 API（`hooks/hooks.json`，command type，JSON stdin/stdout）
 - [x] 確認 subagent API（`subagent_type="arceus:<name>"`，透過 agent markdown frontmatter 指定 model）
-- [x] 確認 MCP tools 的註冊方式（`.mcp.json` 在 plugin manifest 引用）
+- [x] 確認 MCP tools 的註冊方式（`.mcp.json` 在 plugin manifest 引用；現已改為 plugin.json 內聯——見 13 節第 6 點與 2026-06-11 Decision 2）
 - [x] 研究 OMC 的 source code 確認實作細節
 
 ### Phase 1：最小可用版本 ✅ 完成
@@ -679,7 +679,7 @@ arceus/
 - [ ] GitHub tools（Issues + PR）— 可重用舊 adapter 程式碼
 - [ ] GitLab tools（Issues + MR + Pipeline）
 - [ ] Plane tools（Tasks + Status）
-- [ ] MCP server 實作（dist/mcp-server.js）
+- [ ] MCP server 實作（dist/mcp-server.js；註冊方式必須用 plugin.json 的 `mcpServers` 內聯欄位 + tsup entry，勿復活根目錄 `.mcp.json`——見 2026-06-11-remove-vestigial-mcp-server-registration Decision 2）
 - [ ] `task-sync` skill 接上 MCP tools
 
 ### Phase 4：進階功能
@@ -697,7 +697,7 @@ arceus/
 3. **Hook 通訊協議** → stdin 接收 JSON（含 session_id, cwd, prompt 等），stdout 輸出 JSON（含 continue, hookSpecificOutput.additionalContext）
 4. **Context 注入** → 透過 `additionalContext` 欄位，hook 可注入文字到 Claude 的對話 context
 5. **Subagent model 控制** → agent markdown frontmatter 的 `model` 欄位，使用時 `subagent_type="pluginName:agentName"`
-6. **MCP tools** → `.mcp.json` 在 plugin.json 中引用，格式同 settings.json 的 mcpServers
+6. **MCP tools** → plugin.json 的 `mcpServers` 欄位**內聯**註冊（支援 `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PROJECT_DIR}` 變數）。根目錄 `.mcp.json` 形式已於 2026-06-11 移除——symlink 安裝下該檔名會被同時當成 plugin 設定與專案設定讀兩次
 7. **檔案系統存取** → hook scripts 可自由讀寫檔案，`$CLAUDE_PROJECT_DIR` 和 `$CLAUDE_PLUGIN_ROOT` 環境變數可用
 8. **OMC 實作模式** → OMC 用 `scripts/run.cjs` 作為 hook runner，keyword detection + skill injection + state management 全透過 hooks 實現
 

@@ -127,7 +127,6 @@ arceus/
 ├── hooks/hooks.json                    # Lifecycle hook 註冊
 ├── agents/*.md                         # Agent 定義（planner/coder/tester/reviewer/researcher/task-syncer）
 ├── skills/*/SKILL.md                   # 9 個 skill 工作流
-├── .mcp.json                           # MCP server 設定
 ├── src/
 │   ├── hooks/                          # Hook 實作（TypeScript）
 │   ├── state/                          # .arceus/ 純檔案 I/O
