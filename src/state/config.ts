@@ -32,6 +32,26 @@ export interface ArceusProjectConfig {
      */
     requireApprove?: boolean;
   };
+  /** Stop hook verification gate — checks session log for unverified code edits. */
+  stopGate?: {
+    /** Master switch. When false the gate is fully bypassed. Defaults to true. */
+    enabled?: boolean;
+    /**
+     * Strict mode: when true, unverified code edits block the stop.
+     * Defaults to false (advisory: systemMessage warning only).
+     * Naming mirrors checkSpec.requireApprove (require + verb).
+     */
+    requireVerify?: boolean;
+    /**
+     * Path patterns excluded from triggering the gate.
+     * Prefix match for entries ending in "/" (e.g. ".arceus/").
+     * Suffix match for entries starting with "*" (e.g. "*.md").
+     * Exact match otherwise.
+     * Defaults to [".arceus/", "*.md"].
+     * Edits to these paths alone do not require npm verification.
+     */
+    excludedPaths?: string[];
+  };
   /** Preflight check tuning (PreToolUse hook) */
   preflight?: {
     /** Disable the preflight gate entirely. */

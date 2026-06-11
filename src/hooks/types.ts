@@ -50,6 +50,12 @@ export interface SubagentStopInput extends HookBaseInput {
 
 export interface StopInput extends HookBaseInput {
   hook_event_name: "Stop";
+  /**
+   * True when the assistant is continuing because a prior Stop hook blocked.
+   * Used by the stop gate for loop protection: when true the gate passes unconditionally
+   * to prevent infinite stop-block cycles.
+   */
+  stop_hook_active?: boolean;
 }
 
 export type HookInput =

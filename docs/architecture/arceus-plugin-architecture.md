@@ -87,11 +87,68 @@ Claude Code 支援的 lifecycle hooks（參考 OMC 的 11 個 hook point）：
 | `SessionStart` | 開啟新 session | 載入 `.arceus/` 狀態、注入 system prompt |
 | `UserPromptSubmit` | 使用者送出訊息 | **Magic keyword 偵測**、注入 skill context |
 | `PreToolUse` | 呼叫工具前 | 攔截危險操作、注入安全檢查 |
-| `PostToolUse` | 工具執行後 | 記錄執行結果、更新 notepad |
+| `PostToolUse` | 工具執行後 | 記錄執行結果；log `code_edit`（Edit/Write/MultiEdit/NotebookEdit）與 `verification_run`（Bash 驗證指令）結構化事件 |
 | `SubagentStart` | subagent 啟動 | 注入 agent-specific context |
 | `SubagentStop` | subagent 完成 | 收集結果、更新任務狀態 |
 | `PreCompact` | context 壓縮前 | 把關鍵資訊寫入 `.arceus/notepad` 保存 |
-| `Stop` | session 結束前 | 保存最終狀態、產出 summary |
+| `Stop` | 每回合 AI 回應結束時 | 保存最終狀態；呼叫 stop-gate 檢查未驗證的 code edit |
+
+### 4.1 Stop Hook 驗證閘門（Stop Gate）
+
+每回合結束時，`stop.ts` 會評估本回合是否有未驗證的程式碼修改。
+
+#### 事件流
+
+```
+PostToolUse（每次工具呼叫後）
+  ├── tool 為 Edit/Write/MultiEdit/NotebookEdit
+  │     └── logEvent: { event: "code_edit", data: { tool, file_path } }
+  └── tool 為 Bash 且 command 匹配驗證 pattern
+        └── logEvent: { event: "verification_run", data: { kind, command, ok } }
+              ↓
+Stop hook 觸發（每回合結束）
+  └── readSessionLog() 讀取本 session 全部事件
+        └── evaluateStopGate() ← src/hooks/stop-gate.ts（純函式，無 I/O）
+              ├── enabled=false  → pass（完全旁路）
+              ├── stop_hook_active=true → pass（loop protection）
+              ├── 無 non-excluded code_edit → pass
+              ├── lastEditIndex 之後有 verification_run ok=true → pass
+              ├── requireVerify=false（advisory）→ writeOutput({ systemMessage: warning })
+              └── requireVerify=true（strict）   → writeOutput({ decision: "block", reason })
+```
+
+**loop protection**：`stop_hook_active === true`（Claude Code 在上一輪 block 後重進 Stop 時設此欄位）放行並以 `writeOutput({continue:true, systemMessage})` 附帶警告——於 `enabled` 檢查之後執行，disabled gate 不發任何訊息（`stop_hook_active` 可能由其他 plugin 的 Stop hook 造成）。只允許 block 一輪——AI 若仍未跑驗證，第二輪放行避免 session 鎖死。
+
+**fail-open 原則**：整個 gate 邏輯包在 try-catch 中。任何內部錯誤（如 session log 損毀）一律 passThrough + stderr 警告，不影響正常工作流。
+
+#### Path Exclusion（`isExcludedPath`）
+
+`excludedPaths` 預設 `[".arceus/", "*.md"]`，在 gate predicate 階段過濾（不在 PostToolUse 階段過濾，session log 保留完整 code_edit 記錄供除錯）。
+
+| Pattern 格式 | 匹配規則 | 範例 |
+|---|---|---|
+| 以 `/` 結尾 | 前綴/子字串比對（`includes`） | `.arceus/` → 排除所有 `.arceus/` 內的路徑 |
+| 以 `*` 開頭 | 後綴比對（`endsWith`） | `*.md` → 排除所有 `.md` 檔 |
+| 其他 | 完全相等 | `TODO.txt` → 排除該確切路徑 |
+| `"unknown"` | 永不排除（保守策略） | — |
+
+#### Gate 三態
+
+| `stopGate.enabled` | `stopGate.requireVerify` | 行為 |
+|---|---|---|
+| `false` | (任何) | 完全旁路；行為等同沒有 gate |
+| `true` | `false`（**預設**） | **Advisory**：`systemMessage` 警告，不阻止 AI 結束 |
+| `true` | `true` | **Strict**（team opt-in）：`decision: "block"` + reason 指示 AI 補跑 `npm run verify` |
+
+#### 與三層驗證機制的分工
+
+| 層級 | 實作位置 | 觸發時機 | 控制力 |
+|---|---|---|---|
+| **subagent reminder** | `subagent-stop.ts` | arceus subagent 完成時 | 零（guidance only） |
+| **stop gate** | `stop.ts` + `stop-gate.ts` | 每回合結束時 | advisory systemMessage 或 strict block |
+| **checkSpec completion gate** | `src/state/changes.ts` | `change status completed` lifecycle | throw Error（`--force` 可繞過） |
+
+三者攔截時機完全不同，互為互補：subagent reminder 引導 AI 跑驗證 → PostToolUse 記錄 `verification_run` 事件 → stop gate 讀到就 pass；即使 AI 忽略 reminder，stop gate 在回合出口攔截；即使 stop gate 在 advisory 模式未阻止，checkSpec gate 是最後的 change lifecycle 防線。
 
 ### Magic Keywords 對應表
 
