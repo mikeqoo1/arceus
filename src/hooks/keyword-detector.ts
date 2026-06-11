@@ -116,7 +116,15 @@ function loadSkillContent(skillName: string, cwd: string): string | null {
   const pluginRoot = getPluginRoot();
   const builtinPath = join(pluginRoot, "skills", skillName, "SKILL.md");
   if (existsSync(builtinPath)) {
-    return readFileSync(builtinPath, "utf-8");
+    // Substitute the plugin-root placeholder so builtin SKILL.md files can
+    // reference plugin-shipped workflow scripts by absolute path. Builtin
+    // skills only — project-level overrides control their own paths.
+    // Function replacement — a plain string value would interpret `$`
+    // replacement patterns ($$, $&, $`, $') appearing in the plugin path.
+    return readFileSync(builtinPath, "utf-8").replaceAll(
+      "{{ARCEUS_PLUGIN_ROOT}}",
+      () => pluginRoot,
+    );
   }
 
   return null;

@@ -42,5 +42,14 @@ export function readSessionLog(
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as SessionEvent);
+    .flatMap((line) => {
+      // Tolerate individually corrupt lines (torn/interleaved writes) — one
+      // bad line must not discard the whole log, or consumers like the stop
+      // gate would silently bypass for the entire session.
+      try {
+        return [JSON.parse(line) as SessionEvent];
+      } catch {
+        return [];
+      }
+    });
 }

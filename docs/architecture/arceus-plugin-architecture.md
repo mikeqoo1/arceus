@@ -87,11 +87,69 @@ Claude Code 支援的 lifecycle hooks（參考 OMC 的 11 個 hook point）：
 | `SessionStart` | 開啟新 session | 載入 `.arceus/` 狀態、注入 system prompt |
 | `UserPromptSubmit` | 使用者送出訊息 | **Magic keyword 偵測**、注入 skill context |
 | `PreToolUse` | 呼叫工具前 | 攔截危險操作、注入安全檢查 |
-| `PostToolUse` | 工具執行後 | 記錄執行結果、更新 notepad |
+| `PostToolUse` | 工具執行後 | 記錄執行結果；log `code_edit`（Edit/Write/MultiEdit/NotebookEdit）與 `verification_run`（Bash 驗證指令）結構化事件 |
 | `SubagentStart` | subagent 啟動 | 注入 agent-specific context |
 | `SubagentStop` | subagent 完成 | 收集結果、更新任務狀態 |
 | `PreCompact` | context 壓縮前 | 把關鍵資訊寫入 `.arceus/notepad` 保存 |
-| `Stop` | session 結束前 | 保存最終狀態、產出 summary |
+| `Stop` | 每回合 AI 回應結束時 | 保存最終狀態；呼叫 stop-gate 檢查未驗證的 code edit |
+
+### 4.1 Stop Hook 驗證閘門（Stop Gate）
+
+每回合結束時，`stop.ts` 會評估本回合是否有未驗證的程式碼修改。
+
+#### 事件流
+
+```
+PostToolUse（每次工具呼叫後）
+  ├── tool 為 Edit/Write/MultiEdit/NotebookEdit
+  │     └── logEvent: { event: "code_edit", data: { tool, file_path } }
+  └── tool 為 Bash 且 command 匹配驗證 pattern
+        └── logEvent: { event: "verification_run", data: { kind, command, ok } }
+              ↓
+Stop hook 觸發（每回合結束）
+  └── readSessionLog() 讀取本 session 全部事件
+        └── evaluateStopGate() ← src/hooks/stop-gate.ts（純函式，無 I/O）
+              ├── enabled=false  → pass（完全旁路）
+              ├── stop_hook_active=true → pass（loop protection）
+              ├── 無 non-excluded code_edit → pass
+              ├── lastEditIndex 之後有 verification_run ok=true → pass
+              ├── requireVerify=false（advisory）→ writeOutput({ systemMessage: warning })
+              └── requireVerify=true（strict）   → writeOutput({ decision: "block", reason })
+```
+
+**loop protection**：`stop_hook_active === true`（Claude Code 在上一輪 block 後重進 Stop 時設此欄位）放行並以 `writeOutput({continue:true, systemMessage})` 附帶警告——於 `enabled` 檢查之後執行，disabled gate 不發任何訊息（`stop_hook_active` 可能由其他 plugin 的 Stop hook 造成）。只允許 block 一輪——AI 若仍未跑驗證，第二輪放行避免 session 鎖死。
+
+**fail-open 原則**：整個 gate 邏輯包在 try-catch 中。任何內部錯誤（如 session log 損毀）一律 passThrough + stderr 警告，不影響正常工作流。
+
+#### Path Exclusion（`isExcludedPath`）
+
+`excludedPaths` 預設 `[".arceus/", "*.md"]`，在 gate predicate 階段過濾（不在 PostToolUse 階段過濾，session log 保留完整 code_edit 記錄供除錯）。
+
+| Pattern 格式 | 匹配規則 | 範例 |
+|---|---|---|
+| 以 `/` 結尾 | 前綴/子字串比對（`includes`） | `.arceus/` → 排除所有 `.arceus/` 內的路徑 |
+| 以 `*` 開頭 | 後綴比對（`endsWith`） | `*.md` → 排除所有 `.md` 檔 |
+| 其他 | 完全相等 | `TODO.txt` → 排除該確切路徑 |
+| `"unknown"` | 永不排除（保守策略） | — |
+
+#### Gate 三態
+
+| `stopGate.enabled` | `stopGate.requireVerify` | 行為 |
+|---|---|---|
+| `false` | (任何) | 完全旁路；行為等同沒有 gate |
+| `true` | `false`（**預設**） | **Advisory**：`systemMessage` 警告，不阻止 AI 結束 |
+| `true` | `true` | **Strict**（team opt-in）：`decision: "block"` + reason 指示 AI 補跑 `npm run verify` |
+
+#### 與四層驗證機制的分工
+
+| 層級 | 實作位置 | 觸發時機 | 控制力 |
+|---|---|---|---|
+| **L1 subagent reminder** | `subagent-stop.ts` | arceus subagent 完成時 | 零（guidance only） |
+| **L2 stop gate** | `stop.ts` + `stop-gate.ts` | 每回合結束時 | advisory systemMessage 或 strict block |
+| **L3 multi-agent adversarial review** | `workflows/adversarial-review.js`（apply Step 5） | apply 的 review 階段 | 存活 block findings 阻擋進度，最多 3 輪 |
+| **L4 checkSpec completion gate** | `src/state/changes.ts` | `change status completed` lifecycle | throw Error（`--force` 可繞過） |
+
+四層攔截時機完全不同，互為互補：subagent reminder（L1）引導 AI 跑驗證 → stop gate（L2）在回合出口攔截未驗證的 code edit → adversarial review（L3）在 apply 的 review 階段以多維度對抗方式把關 → checkSpec audit（L4）是 change lifecycle 的最終獨立防線。
 
 ### Magic Keywords 對應表
 
@@ -371,6 +429,103 @@ audit/<ts>.md + audit/latest.md  ←──────────────  
 | `true` | `true` | Strict：必須 verdict === APPROVE 且 verifiedSha === HEAD；`--force` 帶 audit log entry 可繞過 |
 
 **Audit 大小訊號**：報告超過 7000 字時 stderr 印警告，提示 change 切太大、建議拆分。不擋流程。
+
+### 9.2 Workflow 多 Agent 審查：adversarial review 與 judge panel
+
+Arceus 附帶兩個 plugin-shipped Workflow script（`workflows/` 目錄，經 `package.json` 的 `files` 陣列隨 plugin 發布）。兩者均為 Claude Code Workflow tool 的 scriptPath 目標，**不是** standalone Node 模組——不能用 `import()` 單元測試，只在 Workflow tool runtime 中執行。
+
+#### `{{ARCEUS_PLUGIN_ROOT}}` Placeholder 替換機制
+
+builtin SKILL.md 注入前，`keyword-detector.ts` 的 `loadSkillContent()` 在 builtin path 分支呼叫：
+
+```typescript
+content.replaceAll("{{ARCEUS_PLUGIN_ROOT}}", getPluginRoot())
+```
+
+`getPluginRoot()` 讀取 `process.env["CLAUDE_PLUGIN_ROOT"]`（Claude Code 啟動 plugin hooks 時設定）；未設定時 fallback 到 `process.cwd()`。替換**只發生在 builtin path**——project-level override（`.arceus/skills/*/SKILL.md`）由作者自行控制路徑，plugin 不介入。
+
+#### 9.2.1 `workflows/adversarial-review.js`（apply Step 5，L3）
+
+apply Step 5 的 Path A，輸入 `{ changeId, diff, specContent, tasksContent }`。
+
+```
+Phase 1 "dimension-review"
+  parallel() ──→ dim:spec-compliance   ─┐
+             ──→ dim:correctness        ├─→ 4 個 DimensionFindings
+             ──→ dim:security           │   (severity: block/warn/suggest,
+             ──→ dim:performance       ─┘    evidence 必填)
+                      ↓
+              彙整 all findings
+              ├── 空 findings → 直接 return APPROVE (skip Phase 2/3)
+              └── 有 block findings → Phase 2
+                      ↓
+Phase 2 "skeptic-verification"
+  parallel() ──→ skeptic:0  (嘗試反駁 finding[0]) ─┐
+             ──→ skeptic:1  (嘗試反駁 finding[1])  ├─→ survives: bool
+             ──→ …                                 ─┘
+              ├── skeptic errored → 保守保留 finding (survives=true)
+              └── 全部反駁成功 → surviving=[] → APPROVE
+                      ↓
+Phase 3 "synthesis"
+  agent ──→ 彙整存活 block findings + advisories → verdict + report
+```
+
+**Edge case 處理**：
+- 單一 dimension agent 錯誤 → 標記 `dimension_error`，不阻擋其他維度，synthesis report 標注「INCOMPLETE dimensions（coverage gap，非 pass）」
+- findings 全為空 → Phase 2/3 跳過，直接回傳 `verdict: "APPROVE"`
+- skeptic agent 錯誤 → finding 保留（conservative default）
+
+**所有 agents 均為 prompt-only**（`agent(prompt, { label, schema })`），不指定 `agentType`，避免與 `agents/reviewer.md` 的 system prompt 衝突（詳見 decisions.md Decision 7）。
+
+#### 9.2.2 `workflows/judge-panel.js`（propose Step 3，L3 前置）
+
+propose Step 3 的 Path A，輸入 `{ changeId, changePath, researchFindings, userGoal }`。三份草稿共用 Step 2 researcher 的 `researchFindings`，不各自 re-research。
+
+```
+Phase 1 "drafting"
+  parallel() ──→ draft:minimal-surface        ─┐
+             ──→ draft:robustness-edge-cases   ├─→ 3 份草稿（lens + 四檔內容）
+             ──→ draft:team-workflow-DX        ─┘
+              ├── 0 份成功 → throw Error（中止）
+              └── 1 份成功 → judge 跳過 ranking，仍驗證事實性
+                      ↓
+Phase 2 "judging"
+  parallel() ──→ judge:1  (讀全部草稿 + Read 實際程式碼驗證事實) ─┐
+             ──→ judge:2  (同上)                                  ├─→ JudgeVerdict
+                      ↓                                          ─┘
+              factErrors 彙整（judge 讀實際 code，其 reality 為權威）
+              rankings 合併（衝突時 synthesis 自行裁決）
+                      ↓
+Phase 3 "synthesis"
+  agent ──→ 取 ranking 最高草稿 + 修正 factErrors + 吸收 bestIdeas
+         ──→ return { proposal, spec, tasks, decisions, openQuestions }
+```
+
+**主 agent 負責寫檔**：workflow 回傳四檔內容字串後，由 propose skill 的主 agent 以 Write tool 寫入 change folder——workflow agents 不直接寫 change files（保持「workflow agents 無 filesystem 副作用」的原則）。
+
+#### 9.2.3 Dual-path Fallback 機制
+
+兩個 skill 共用相同判斷邏輯（Decision 6）：
+
+```
+if the Workflow tool is in your tool list
+  → Path A: 呼叫 Workflow script
+else
+  → Path B: 退回單一 arceus:reviewer（apply）/ arceus:planner（propose）
+```
+
+前置判斷（不是 try-catch）確保 script error 不被誤判為「tool 不可用」，保留 script bug 的可見性。
+
+#### 9.2.4 與 L4 check-spec 的層級關係
+
+L3 multi-agent review 在 `apply` Step 5 執行，**不取代** L4 check-spec audit（Step 5.5）：
+
+| 層 | 執行時機 | 視角 | 目的 |
+|---|---|---|---|
+| L3 adversarial review | apply Step 5（code 寫好後） | 對抗式多維度（plugin 內部） | 找出 code bug 和 spec 偏差，修了再繼續 |
+| L4 check-spec audit | apply Step 5.5（review 通過後） | 獨立第三方 Go binary | 確認整體 spec 符合度，verdict 寫進 meta.json |
+
+兩層互補：L3 是「修 code 的依據」（迭代性，findings 修復後失去獨立意義）；L4 是「PR 審計 trail」（verdict 持久化到 `audit/latest.md`，git-tracked）。
 
 ---
 

@@ -1,0 +1,12 @@
+{
+  "id": "2026-06-11-integrate-ultracode-workflow-into-apply-and-propose",
+  "title": "Integrate ultracode workflow into apply and propose",
+  "status": "completed",
+  "createdAt": "2026-06-11T03:40:17.074Z",
+  "updatedAt": "2026-06-11T07:08:44.811Z",
+  "verdict": "APPROVE",
+  "verifiedSha": "0d141685218e2c4157a79a04df8abbd9c983f372",
+  "verifiedAt": "2026-06-11T07:08:16.533Z",
+  "verifiedBase": "origin/main",
+  "verificationBinaryVersion": "check-spec v0.1.0-2-gbee34ec-dirty (commit bee34ec, built 2026-05-26T03:45:57Z)"
+}
