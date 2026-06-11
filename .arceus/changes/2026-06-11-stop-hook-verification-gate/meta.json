@@ -1,7 +1,12 @@
 {
   "id": "2026-06-11-stop-hook-verification-gate",
   "title": "Stop hook verification gate",
-  "status": "active",
+  "status": "completed",
   "createdAt": "2026-06-11T03:40:17.045Z",
-  "updatedAt": "2026-06-11T04:10:26.041Z"
+  "updatedAt": "2026-06-11T04:45:51.466Z",
+  "verdict": "APPROVE",
+  "verifiedSha": "9c32ceb40f19ee9e9cbc641ac2b50d16e0d9e126",
+  "verifiedAt": "2026-06-11T04:45:35.586Z",
+  "verifiedBase": "origin/main",
+  "verificationBinaryVersion": "check-spec v0.1.0-2-gbee34ec-dirty (commit bee34ec, built 2026-05-26T03:45:57Z)"
 }
