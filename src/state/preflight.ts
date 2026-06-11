@@ -20,7 +20,8 @@ export interface PreflightOptions {
   fetch?: boolean;
   /** If true, behind-upstream blocks. Defaults to true. */
   requireUpstreamSynced?: boolean;
-  /** Timeout for git fetch in ms. Defaults to 10s. */
+  /** Timeout for git fetch in ms. Defaults to 3s — must stay well under the
+   *  PreToolUse hook timeout (hooks.json) so the remaining git calls fit. */
   fetchTimeoutMs?: number;
 }
 
@@ -66,7 +67,7 @@ export function runGitPreflight(
   const protectedBranches = options.protectedBranches ?? DEFAULT_PROTECTED;
   const shouldFetch = options.fetch ?? true;
   const requireUpstreamSynced = options.requireUpstreamSynced ?? true;
-  const fetchTimeoutMs = options.fetchTimeoutMs ?? 10_000;
+  const fetchTimeoutMs = options.fetchTimeoutMs ?? 3_000;
 
   const branch = gitOutput(cwd, ["branch", "--show-current"]) ?? "";
 
@@ -134,6 +135,35 @@ export function isPreflightDone(arceusDir: string, sessionId: string): boolean {
 
 export function markPreflightDone(arceusDir: string, sessionId: string): void {
   const path = getPreflightMarkerPath(arceusDir, sessionId);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, new Date().toISOString(), "utf-8");
+}
+
+/**
+ * Fetch-attempt marker — `git fetch` runs at most once per session. While
+ * preflight is FAILING (e.g. protected branch) the gate re-runs on every
+ * modifying tool call; without this marker each retry pays the network
+ * fetch (up to fetchTimeoutMs) again.
+ */
+export function getFetchAttemptMarkerPath(
+  arceusDir: string,
+  sessionId: string,
+): string {
+  return join(arceusDir, "sessions", sessionId, "preflight.fetched");
+}
+
+export function hasFetchAttempted(
+  arceusDir: string,
+  sessionId: string,
+): boolean {
+  return existsSync(getFetchAttemptMarkerPath(arceusDir, sessionId));
+}
+
+export function markFetchAttempted(
+  arceusDir: string,
+  sessionId: string,
+): void {
+  const path = getFetchAttemptMarkerPath(arceusDir, sessionId);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, new Date().toISOString(), "utf-8");
 }

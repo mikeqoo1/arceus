@@ -50,8 +50,8 @@ src/
 │   ├── types.ts              # Hook stdin/stdout protocol types
 │   ├── utils.ts              # Shared hook utilities (readStdin, writeOutput)
 │   ├── session-start.ts      # SessionStart: load .arceus/ state + active changes
-│   ├── keyword-detector.ts   # UserPromptSubmit: magic keyword detection + skill injection
-│   ├── pre-tool-use.ts       # PreToolUse: safety checks on dangerous commands
+│   ├── keyword-detector.ts   # UserPromptSubmit: magic keyword detection + skill injection（系統產生文字如 task notification 不觸發）
+│   ├── pre-tool-use.ts       # PreToolUse: dangerous-Bash checks + git preflight on modifying tools (Edit/Write/MultiEdit/NotebookEdit)
 │   ├── post-tool-use.ts      # PostToolUse: log tool_use + code_edit (Edit/Write/MultiEdit/NotebookEdit) + verification_run (Bash) structured events
 │   ├── subagent-stop.ts      # SubagentStop: collect results, inject verification reminders
 │   ├── stop-gate.ts          # Pure predicate: evaluateStopGate() + isExcludedPath() — no I/O
@@ -137,7 +137,7 @@ Agents are defined as markdown files in `agents/`. Used via Claude Code's Task/A
 All code changes must pass verification at four complementary layers (攔截時機遞增、控制力遞增）：
 
 **Layer 1 — Subagent reminder** (`subagent-stop.ts`, always active):
-當 `arceus:coder` / `arceus:debugger` 等 subagent 完成時，注入 `additionalContext` 提醒主 agent 跑驗證。控制力：zero（guidance only）。
+當 `arceus:coder` / `arceus:debugger` 等 subagent 完成時，注入 `additionalContext` 提醒主 agent 跑驗證。每個 agent_id 只提醒**一次**（marker 去重，防止 reminder 對 subagent 循環注入）。控制力：zero（guidance only）。
 
 **Layer 2 — Stop hook gate** (per-turn, configurable via `stopGate.*` in `.arceus/config.json`):
 每回合結束時，`stop.ts` 讀取 session log，呼叫 `evaluateStopGate()`（純函式，`src/hooks/stop-gate.ts`）。若最後一筆 non-excluded `code_edit` 事件之後沒有 `verification_run ok=true`，依模式 warn 或 block。
