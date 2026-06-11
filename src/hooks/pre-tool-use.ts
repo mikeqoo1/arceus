@@ -9,6 +9,8 @@ import {
   runGitPreflight,
   isPreflightDone,
   markPreflightDone,
+  hasFetchAttempted,
+  markFetchAttempted,
 } from "../state/index.js";
 
 // Tools that mutate the working tree — gated by preflight.
@@ -88,13 +90,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  // git fetch at most once per session: while preflight is FAILING the gate
+  // re-runs on every modifying tool call, and paying the network fetch each
+  // retry costs seconds. Retries re-check branch state with local git only.
+  const fetchAllowed =
+    config.preflight?.fetch !== false &&
+    !hasFetchAttempted(arceusDir, input.session_id);
+  if (fetchAllowed) {
+    markFetchAttempted(arceusDir, input.session_id);
+  }
+
   const result = runGitPreflight(input.cwd, {
     ...(config.preflight?.protectedBranches !== undefined
       ? { protectedBranches: config.preflight.protectedBranches }
       : {}),
-    ...(config.preflight?.fetch !== undefined
-      ? { fetch: config.preflight.fetch }
-      : {}),
+    fetch: fetchAllowed,
     ...(config.preflight?.requireUpstreamSynced !== undefined
       ? { requireUpstreamSynced: config.preflight.requireUpstreamSynced }
       : {}),

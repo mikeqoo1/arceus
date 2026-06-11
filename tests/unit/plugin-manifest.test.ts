@@ -65,3 +65,69 @@ describe("plugin.json manifest integrity", () => {
     }
   });
 });
+
+describe("hooks.json PreToolUse preflight coverage (issue #5)", () => {
+  const hooksConfig = JSON.parse(
+    readFileSync(join(ROOT, "hooks", "hooks.json"), "utf-8"),
+  ) as {
+    hooks: Record<
+      string,
+      Array<{ matcher?: string; hooks: Array<{ timeout?: number }> }>
+    >;
+  };
+  const preToolUse = hooksConfig.hooks["PreToolUse"] ?? [];
+
+  it("matcher covers every tool in pre-tool-use.ts MODIFYING_TOOLS", () => {
+    // Extract the source-of-truth tool list from the hook source so the two
+    // files cannot drift apart silently again (the original bug: matcher
+    // "Bash" left the entire MODIFYING_TOOLS preflight branch unreachable).
+    const src = readFileSync(
+      join(ROOT, "src", "hooks", "pre-tool-use.ts"),
+      "utf-8",
+    );
+    const setMatch = src.match(/MODIFYING_TOOLS = new Set\(\[([\s\S]*?)\]\)/);
+    expect(setMatch).not.toBeNull();
+    if (!setMatch) return;
+    const tools = Array.from(setMatch[1].matchAll(/"(\w+)"/g)).map(
+      (m) => m[1],
+    );
+    expect(tools.length).toBeGreaterThan(0);
+    // The dangerous-Bash branch in pre-tool-use.ts depends on the matcher too.
+    tools.push("Bash");
+    const matchers = preToolUse.map((e) => e.matcher ?? "");
+    for (const tool of tools) {
+      const covered = matchers.some(
+        // "*" is Claude Code's documented match-everything matcher.
+        (m) => m === "*" || new RegExp(`^(?:${m})$`).test(tool),
+      );
+      expect(
+        covered,
+        `tool "${tool}" not covered by any PreToolUse matcher`,
+      ).toBe(true);
+    }
+  });
+
+  it("hook timeout leaves headroom above the preflight fetch default", () => {
+    const preflightSrc = readFileSync(
+      join(ROOT, "src", "state", "preflight.ts"),
+      "utf-8",
+    );
+    const m = preflightSrc.match(/fetchTimeoutMs \?\? ([\d_]+)/);
+    expect(m).not.toBeNull();
+    if (!m) return;
+    const fetchMs = parseInt(m[1].replace(/_/g, ""), 10);
+    // An omitted timeout falls back to Claude Code's 60s default — ample
+    // headroom, so only explicit timeouts are checked.
+    const timeouts = preToolUse.flatMap((e) =>
+      e.hooks
+        .map((h) => h.timeout)
+        .filter((t): t is number => typeof t === "number"),
+    );
+    for (const t of timeouts) {
+      expect(
+        t * 1000,
+        "PreToolUse hook timeout (ms) must exceed the preflight fetch default",
+      ).toBeGreaterThan(fetchMs);
+    }
+  });
+});

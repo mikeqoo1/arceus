@@ -85,11 +85,11 @@ Claude Code 支援的 lifecycle hooks（參考 OMC 的 11 個 hook point）：
 | Hook | 觸發時機 | Arceus 用途 |
 |------|---------|------------|
 | `SessionStart` | 開啟新 session | 載入 `.arceus/` 狀態、注入 system prompt |
-| `UserPromptSubmit` | 使用者送出訊息 | **Magic keyword 偵測**、注入 skill context |
-| `PreToolUse` | 呼叫工具前 | 攔截危險操作、注入安全檢查 |
+| `UserPromptSubmit` | 使用者送出訊息 | **Magic keyword 偵測**、注入 skill context（系統產生文字——task notification、slash-command payload——不觸發） |
+| `PreToolUse` | 呼叫工具前 | 攔截危險 Bash；修改類工具（Edit/Write/MultiEdit/NotebookEdit）的 git preflight 分支保護 |
 | `PostToolUse` | 工具執行後 | 記錄執行結果；log `code_edit`（Edit/Write/MultiEdit/NotebookEdit）與 `verification_run`（Bash 驗證指令）結構化事件 |
 | `SubagentStart` | subagent 啟動 | 注入 agent-specific context |
-| `SubagentStop` | subagent 完成 | 收集結果、更新任務狀態 |
+| `SubagentStop` | subagent 完成 | 收集結果、更新任務狀態；coder/debugger 的 verification reminder 每 agent 僅注入一次（marker 去重） |
 | `PreCompact` | context 壓縮前 | 把關鍵資訊寫入 `.arceus/notepad` 保存 |
 | `Stop` | 每回合 AI 回應結束時 | 保存最終狀態；呼叫 stop-gate 檢查未驗證的 code edit |
 

@@ -69,6 +69,18 @@ const KEYWORDS: KeywordDef[] = [
   },
 ];
 
+// Markers of harness-generated message payloads (whole-message system text).
+// Keywords inside such text are quotes, not user commands (issue #7).
+// <system-reminder> is intentionally NOT listed: reminders get appended to
+// genuine user prompts (mixed content), so skipping on it would disable
+// keyword detection for normal asks.
+const SYSTEM_TEXT_MARKERS = [
+  "<task-notification>",
+  "<local-command-caveat>",
+  "<command-name>",
+  "<persisted-output>",
+];
+
 // --- Sanitization ---
 
 function sanitizePrompt(text: string): string {
@@ -134,6 +146,13 @@ function loadSkillContent(skillName: string, cwd: string): string | null {
 
 async function main(): Promise<void> {
   const input = await readStdin<UserPromptSubmitInput>();
+
+  // System-generated text is not a user instruction — skip detection entirely.
+  if (SYSTEM_TEXT_MARKERS.some((m) => input.prompt.includes(m))) {
+    passThrough();
+    return;
+  }
+
   const sanitized = sanitizePrompt(input.prompt);
 
   // Detect keywords

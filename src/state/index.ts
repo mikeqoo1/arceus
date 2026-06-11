@@ -17,6 +17,9 @@ export {
   getPreflightMarkerPath,
   isPreflightDone,
   markPreflightDone,
+  getFetchAttemptMarkerPath,
+  hasFetchAttempted,
+  markFetchAttempted,
 } from "./preflight.js";
 export type { PreflightOptions, PreflightResult } from "./preflight.js";
 

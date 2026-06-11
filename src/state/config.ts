@@ -62,7 +62,7 @@ export interface ArceusProjectConfig {
     fetch?: boolean;
     /** Block when local branch is behind upstream. Defaults to true. */
     requireUpstreamSynced?: boolean;
-    /** Timeout for `git fetch` in ms. Defaults to 10000. */
+    /** Timeout for `git fetch` in ms. Defaults to 3000 (must stay under the PreToolUse hook timeout). */
     fetchTimeoutMs?: number;
   };
 }
