@@ -1,7 +1,12 @@
 {
   "id": "2026-06-11-remove-vestigial-mcp-server-registration",
   "title": "Remove vestigial MCP server registration",
-  "status": "active",
+  "status": "completed",
   "createdAt": "2026-06-11T08:04:09.407Z",
-  "updatedAt": "2026-06-11T08:06:57.218Z"
+  "updatedAt": "2026-06-11T08:09:56.099Z",
+  "verdict": "APPROVE",
+  "verifiedSha": "b3e0564cd6331e9c90c7355c8f97346a7af7cb0a",
+  "verifiedAt": "2026-06-11T08:09:42.168Z",
+  "verifiedBase": "propose/issue-4-followups",
+  "verificationBinaryVersion": "check-spec v0.1.0-2-gbee34ec-dirty (commit bee34ec, built 2026-05-26T03:45:57Z)"
 }
