@@ -35,7 +35,21 @@ Note the `id` it prints — you'll need it for subsequent steps.
 - Identify stakeholders, dependencies, and risks
 - Gather enough material to write a **specific**, not generic, proposal
 
-### Step 3: Draft Artifacts (delegate to arceus:planner)
+### Step 3: Draft Artifacts (judge panel when available)
+
+Choose the path with one check: **is the Workflow tool in your tool list?**
+
+#### Path A — Workflow tool available (judge panel)
+1. Prepare `researchFindings` (the Step 2 researcher output: context summary +
+   affected files) and the user's goal statement
+2. Announce briefly: "Starting judge panel: 3 drafters + 2 judges + 1 synthesizer"
+3. Call the plugin-shipped workflow (placeholder substituted at injection time):
+   `Workflow({ scriptPath: "{{ARCEUS_PLUGIN_ROOT}}/workflows/judge-panel.js", args: { changeId, changePath, researchFindings, userGoal } })`
+4. The workflow returns the four file contents. **You (the main agent) write
+   them into the change folder with the Write tool yourself** — workflow agents
+   never write change files. Then continue to Step 4 below (human gate).
+
+#### Path B — Fallback (Workflow tool not in tool list; delegate to arceus:planner)
 Use the Write tool to fill in each file. **Be concrete** — cite file paths, function names, real examples. Generic proposals are useless for team review.
 
 **proposal.md** — Why this change exists:

@@ -49,7 +49,27 @@ If any step fails:
 - Fix and re-run (max 3 rounds)
 - If still failing after 3 rounds, report to user with error details and stop
 
-### Step 5: Review (delegate to arceus:reviewer)
+### Step 5: Review (Layer 3 — multi-agent adversarial review)
+
+Layer position: this review does NOT replace Step 4 self-verification (Layers
+1–2) nor the Step 5.5 check-spec audit (Layer 4) — it sits between them.
+Choose the path with one check: **is the Workflow tool in your tool list?**
+
+#### Path A — Workflow tool available (adversarial review)
+1. Collect inputs: `git diff <base>...HEAD` — `<base>` is the change's base ref
+   (default `origin/main`, the same base Step 5.5 check-spec uses) — plus full
+   `spec.md` and `tasks.md` contents
+2. Announce briefly: "Starting adversarial review: 4 dimension reviewers + up to N skeptics"
+3. Call the plugin-shipped workflow (the placeholder below is substituted with
+   the real plugin path at injection time):
+   `Workflow({ scriptPath: "{{ARCEUS_PLUGIN_ROOT}}/workflows/adversarial-review.js", args: { changeId, diff, specContent, tasksContent } })`
+4. Read the returned report. Dimensions marked INCOMPLETE are coverage gaps —
+   re-run them or fall back to Path B for those aspects, never treat as a pass.
+5. If any **surviving block findings**: fix them, re-run Step 4 verification,
+   then re-run this review — **max 3 review rounds**, then stop and ask the user
+6. When no block findings survive, continue to Step 5.5
+
+#### Path B — Fallback (Workflow tool not in tool list; delegate to arceus:reviewer)
 Review the implemented diff against `spec.md` acceptance criteria:
 - Does the code satisfy every acceptance criterion?
 - Any blocking correctness/security/performance issues?
