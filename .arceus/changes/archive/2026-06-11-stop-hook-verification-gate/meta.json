@@ -1,9 +1,9 @@
 {
   "id": "2026-06-11-stop-hook-verification-gate",
   "title": "Stop hook verification gate",
-  "status": "completed",
+  "status": "archived",
   "createdAt": "2026-06-11T03:40:17.045Z",
-  "updatedAt": "2026-06-11T04:45:51.466Z",
+  "updatedAt": "2026-06-12T00:06:54.049Z",
   "verdict": "APPROVE",
   "verifiedSha": "9c32ceb40f19ee9e9cbc641ac2b50d16e0d9e126",
   "verifiedAt": "2026-06-11T04:45:35.586Z",

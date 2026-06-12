@@ -1,9 +1,9 @@
 {
   "id": "2026-06-11-remove-vestigial-mcp-server-registration",
   "title": "Remove vestigial MCP server registration",
-  "status": "completed",
+  "status": "archived",
   "createdAt": "2026-06-11T08:04:09.407Z",
-  "updatedAt": "2026-06-11T08:09:56.099Z",
+  "updatedAt": "2026-06-12T00:06:54.111Z",
   "verdict": "APPROVE",
   "verifiedSha": "b3e0564cd6331e9c90c7355c8f97346a7af7cb0a",
   "verifiedAt": "2026-06-11T08:09:42.168Z",
