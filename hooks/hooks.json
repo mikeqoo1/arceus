@@ -26,12 +26,12 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PLUGIN_ROOT/dist/hooks/pre-tool-use.js\"",
-            "timeout": 3
+            "timeout": 10
           }
         ]
       }
