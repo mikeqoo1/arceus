@@ -67,6 +67,11 @@ const KEYWORDS: KeywordDef[] = [
     skill: "task-sync",
     description: "Sync task status to Plane/GitLab/GitHub",
   },
+  {
+    patterns: /(?:\bcross[\s-]?session\b|跨\s?session|其他\s?session|另一個\s?session)/i,
+    skill: "cross-session",
+    description: "Relay to another live Claude Code session (ListAgents + SendMessage)",
+  },
 ];
 
 // Markers of harness-generated message payloads (whole-message system text).
@@ -79,6 +84,10 @@ const SYSTEM_TEXT_MARKERS = [
   "<local-command-caveat>",
   "<command-name>",
   "<persisted-output>",
+  // Peer-session traffic (Claude Code ≥ 2.1.224): a message from another
+  // session is another agent's request, not this user's command.
+  "<cross-session-message",
+  "[Cross-session idle notice]",
 ];
 
 // --- Sanitization ---
