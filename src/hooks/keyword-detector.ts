@@ -119,6 +119,7 @@ function isInformationalContext(text: string, match: RegExpMatchArray): boolean 
     /tell me about/,
     /什麼是/,
     /怎麼/,
+    /有啥|有什麼|哪些/,
   ];
 
   return informationalPatterns.some((p) => p.test(window));

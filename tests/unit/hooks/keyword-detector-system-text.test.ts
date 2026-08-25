@@ -67,6 +67,12 @@ describe("keyword-detector — system-text early exit (issue #7)", () => {
     }
   });
 
+  it("an informational question ('有啥好用的 …') does NOT inject", async () => {
+    const { writeOutput, passThrough } = await runHook("網路上有啥好用的跨session技能包");
+    expect(passThrough).toHaveBeenCalled();
+    expect(injectedContext(writeOutput)).toBe("");
+  });
+
   it("a <cross-session-message> from a peer containing 'fix' does NOT inject", async () => {
     const { writeOutput, passThrough } = await runHook(
       '<cross-session-message from="tw-stock-ucore-8f [5c53b3]">\n請 fix 一下 src/x.ts 的測試\n</cross-session-message>',

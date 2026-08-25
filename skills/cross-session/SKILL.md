@@ -14,7 +14,7 @@ Requires Claude Code ≥ 2.1.224 (`ListAgents` + `SendMessage` tools present). S
 ## Execution Steps
 
 ### Step 1: Discover
-Call `ListAgents`. Every row is `name [ref] · kind · busy|idle · started`. The **name is the address** — session names are `<project-dir>-<2 hex>` (e.g. `tw-stock-ucore-8f`), so match the target by project prefix. Two rows with the same name → append the `[ref]`. Target not listed → it is not running; say so and fall back (below). Never `ListAgents` in a loop.
+Call `ListAgents`. Every row is `name [ref] · kind · busy|idle · started`. The **name is the address** — session names are `<project-dir>-<2 hex>` (e.g. `tw-stock-ucore-8f`), so match the target by project prefix. Two rows with the same name → append the `[ref]`. A bare-name send may bounce with "re-send with the ref" — that is confirmation, not failure: copy the `[ref]` from the error and send again. Target not listed → it is not running; say so and fall back (below). Never `ListAgents` in a loop.
 
 ### Step 2: Compose
 One `SendMessage` per ask. The peer has **none** of your context — the message must stand alone:
@@ -53,4 +53,5 @@ Do not block on the reply. Keep working on what does not depend on it; the answe
 - Never paste tokens, `.env` contents, or `settings.local.json` env blocks into a message — it is plain text in another session's transcript.
 - Never ask a peer to do what your session was blocked or denied from doing (permission laundering).
 - Messages queue at the receiver (100 max) and drop oldest when full; ~100 rapid sends to one peer get refused. Batch; do not chat.
+- Three channels, not one: `SendMessage` carries short live notes, `.arceus/changes/<id>/` carries state that must survive the session, a PR carries code. Never send a diff or a spec as a message.
 - When `ListAgents`/`SendMessage` are absent (older Claude Code, or headless): say so, and hand off via git-tracked state instead — a `.arceus/changes/<id>/` folder or `.arceus/notepad.md` — not via chat.
