@@ -53,6 +53,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | `fix` / `debug` | 反覆除錯直到測試通過 |
 | `sync` / `同步` | 同步任務狀態到 Plane/GitLab/GitHub |
 | `deep-dive` / `分析` | 深度程式碼分析 |
+| `cross-session` / `跨 session` | 跟同機器上另一個 Claude Code session 交接／問狀態（ListAgents + SendMessage） |
 
 ### 兩種使用節奏
 

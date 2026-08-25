@@ -162,6 +162,7 @@ Stop hook 觸發（每回合結束）
 | `fix` / `debug` | debug-loop | 反覆除錯直到測試通過 |
 | `deep-dive` / `分析` | deep-analysis | 深度程式碼分析 |
 | `sync` / `同步` | task-sync | 同步任務狀態到 Plane/GitLab/GitHub |
+| `cross-session` / `跨 session` | cross-session | 跟同機器上另一個 Claude Code session 交接／問狀態（ListAgents + SendMessage，需 Claude Code ≥ 2.1.224） |
 
 ---
 
@@ -219,6 +220,15 @@ Skills 是可組合的工作流定義，不是單一指令。
 ```
 讀取程式碼 → trace 執行路徑 → 產出架構分析
 ```
+
+#### 5.7 `cross-session`
+
+```
+ListAgents 找到目標 session（名字即位址）→ SendMessage 送出自含上下文的請求
+→ 需要等對方做完就帶 notify_when_idle，不輪詢 → 收到 <cross-session-message> 用 from 當 to 回覆
+```
+
+收訊端把 peer 訊息當「另一個 agent 的請求」而非使用者指令：不能替使用者批准權限、keyword-detector 不把訊息內的 review/fix 當魔法關鍵字。
 
 ### Skill 檔案格式
 

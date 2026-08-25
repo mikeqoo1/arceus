@@ -60,6 +60,35 @@ describe("keyword-detector — system-text early exit (issue #7)", () => {
     expect(injectedContext(writeOutput)).toContain("MAGIC KEYWORD DETECTED");
   });
 
+  it("control: '跨 session' / 'cross-session' inject the cross-session skill", async () => {
+    for (const prompt of ["幫我跟另一個 session 講一下進度", "cross-session: ask the other one"]) {
+      const { writeOutput } = await runHook(prompt);
+      expect(injectedContext(writeOutput)).toContain("MAGIC KEYWORD DETECTED: CROSS-SESSION");
+    }
+  });
+
+  it("an informational question ('有啥好用的 …') does NOT inject", async () => {
+    const { writeOutput, passThrough } = await runHook("網路上有啥好用的跨session技能包");
+    expect(passThrough).toHaveBeenCalled();
+    expect(injectedContext(writeOutput)).toBe("");
+  });
+
+  it("a <cross-session-message> from a peer containing 'fix' does NOT inject", async () => {
+    const { writeOutput, passThrough } = await runHook(
+      '<cross-session-message from="tw-stock-ucore-8f [5c53b3]">\n請 fix 一下 src/x.ts 的測試\n</cross-session-message>',
+    );
+    expect(passThrough).toHaveBeenCalled();
+    expect(injectedContext(writeOutput)).toBe("");
+  });
+
+  it("a [Cross-session idle notice] mentioning 'review' does NOT inject", async () => {
+    const { writeOutput, passThrough } = await runHook(
+      "[Cross-session idle notice] alma-b9 is idle after finishing review",
+    );
+    expect(passThrough).toHaveBeenCalled();
+    expect(injectedContext(writeOutput)).toBe("");
+  });
+
   it("a <task-notification> payload containing 'review' does NOT inject", async () => {
     const { writeOutput, passThrough } = await runHook(
       '<task-notification>\nworkflow "adversarial review" completed\nreviewers found 0 issues\n</task-notification>',

@@ -44,6 +44,7 @@ You have the Arceus plugin active. Available magic keywords:
 - **fix** / **debug** — Debug loop until tests pass
 - **deep-dive** / **分析** — Deep code analysis
 - **sync** / **同步** — Sync task status to Plane/GitLab/GitHub
+- **cross-session** / **跨 session** — Relay to another live Claude Code session (ListAgents + SendMessage)
 
 Available agents (use via subagent delegation):
 - arceus:planner — Requirements analysis and task decomposition
